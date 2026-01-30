@@ -135,6 +135,71 @@ function dbToUI(budget: DBBudget): CategoryBudget {
   }
 }
 
+// CategoryCard component - defined outside to prevent re-creation on parent re-renders
+function CategoryCard({
+  category,
+  onBudgetChange,
+}: {
+  category: CategoryBudget
+  onBudgetChange: (id: string, value: string) => void
+}) {
+  const Icon = category.icon
+  return (
+    <div
+      className="bg-white rounded-xl p-4 flex items-center gap-4 shadow-sm group hover:shadow-md transition-shadow"
+      style={{
+        boxShadow: '0 2px 8px rgba(31, 20, 16, 0.04)',
+      }}
+    >
+      <div
+        className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+        style={{
+          backgroundColor: `${category.color}15`,
+        }}
+      >
+        <Icon
+          className="w-6 h-6"
+          style={{
+            color: category.color,
+          }}
+        />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <h3 className="font-bold text-[#1F1410] text-lg">
+            {category.name}
+          </h3>
+          <span
+            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+              category.type === 'need'
+                ? 'bg-[#10B981]/10 text-[#10B981]'
+                : 'bg-[#A855F7]/10 text-[#A855F7]'
+            }`}
+          >
+            {category.type === 'need' ? 'Need' : 'Want'}
+          </span>
+        </div>
+        <p className="text-sm text-[#1F1410]/40">
+          Last month: ${category.lastMonthSpent.toLocaleString()}
+        </p>
+      </div>
+      <div className="flex flex-col items-end">
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1F1410]/40 font-medium">
+            $
+          </span>
+          <input
+            type="text"
+            value={category.budget}
+            onChange={(e) => onBudgetChange(category.id, e.target.value)}
+            className="w-32 pl-7 pr-3 py-2 text-right font-bold text-[#1F1410] bg-[#1F1410]/[0.03] rounded-lg focus:bg-white focus:ring-2 focus:ring-[#6366F1]/20 focus:outline-none transition-all"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function BudgetView() {
   const [categories, setCategories] = useState<CategoryBudget[]>([])
   const [loading, setLoading] = useState(true)
@@ -303,83 +368,6 @@ export function BudgetView() {
       month: 'long',
       year: 'numeric',
     })
-  }
-
-  const CategoryCard = ({
-    category,
-    index,
-  }: {
-    category: CategoryBudget
-    index: number
-  }) => {
-    const Icon = category.icon
-    return (
-      <motion.div
-        key={category.id}
-        initial={{
-          opacity: 0,
-          x: -20,
-        }}
-        animate={{
-          opacity: 1,
-          x: 0,
-        }}
-        transition={{
-          delay: 0.1 + index * 0.05,
-          duration: 0.3,
-        }}
-        className="bg-white rounded-xl p-4 flex items-center gap-4 shadow-sm group hover:shadow-md transition-shadow"
-        style={{
-          boxShadow: '0 2px 8px rgba(31, 20, 16, 0.04)',
-        }}
-      >
-        <div
-          className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{
-            backgroundColor: `${category.color}15`,
-          }}
-        >
-          <Icon
-            className="w-6 h-6"
-            style={{
-              color: category.color,
-            }}
-          />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="font-bold text-[#1F1410] text-lg">
-              {category.name}
-            </h3>
-            <span
-              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                category.type === 'need'
-                  ? 'bg-[#10B981]/10 text-[#10B981]'
-                  : 'bg-[#A855F7]/10 text-[#A855F7]'
-              }`}
-            >
-              {category.type === 'need' ? 'Need' : 'Want'}
-            </span>
-          </div>
-          <p className="text-sm text-[#1F1410]/40">
-            Last month: ${category.lastMonthSpent.toLocaleString()}
-          </p>
-        </div>
-        <div className="flex flex-col items-end">
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1F1410]/40 font-medium">
-              $
-            </span>
-            <input
-              type="text"
-              value={category.budget}
-              onChange={(e) => handleBudgetChange(category.id, e.target.value)}
-              className="w-32 pl-7 pr-3 py-2 text-right font-bold text-[#1F1410] bg-[#1F1410]/[0.03] rounded-lg focus:bg-white focus:ring-2 focus:ring-[#6366F1]/20 focus:outline-none transition-all"
-            />
-          </div>
-        </div>
-      </motion.div>
-    )
   }
 
   if (loading) {
@@ -823,11 +811,11 @@ export function BudgetView() {
               </span>
             </div>
             <div className="space-y-3">
-              {needsCategories.map((category, index) => (
+              {needsCategories.map((category) => (
                 <CategoryCard
                   key={category.id}
                   category={category}
-                  index={index}
+                  onBudgetChange={handleBudgetChange}
                 />
               ))}
               {needsCategories.length === 0 && (
@@ -848,11 +836,11 @@ export function BudgetView() {
               </span>
             </div>
             <div className="space-y-3">
-              {wantsCategories.map((category, index) => (
+              {wantsCategories.map((category) => (
                 <CategoryCard
                   key={category.id}
                   category={category}
-                  index={index}
+                  onBudgetChange={handleBudgetChange}
                 />
               ))}
               {wantsCategories.length === 0 && (
