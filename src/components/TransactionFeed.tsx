@@ -40,18 +40,22 @@ type UITransaction = {
   source: string
 }
 
-const initialCategories: Category[] = [
-  { icon: Home, name: 'Rent', total: 0, budget: 2000, color: '#6366F1' },
-  { icon: ShoppingCart, name: 'Groceries', total: 0, budget: 600, color: '#10B981' },
-  { icon: Utensils, name: 'Dining Out', total: 0, budget: 400, color: '#FF6B6B' },
-  { icon: Car, name: 'Transportation', total: 0, budget: 200, color: '#38BDF8' },
-  { icon: Plane, name: 'Travel', total: 0, budget: 500, color: '#F59E0B' },
-  { icon: ShoppingBag, name: 'Shopping - General', total: 0, budget: 300, color: '#A855F7' },
-  { icon: Dumbbell, name: 'Fitness', total: 0, budget: 150, color: '#EF4444' },
-  { icon: Scissors, name: 'Self Care', total: 0, budget: 100, color: '#EC4899' },
-  { icon: Clapperboard, name: 'Entertainment', total: 0, budget: 150, color: '#8B5CF6' },
-  { icon: CreditCard, name: 'Subscriptions', total: 0, budget: 100, color: '#14B8A6' },
-]
+// Icon map for converting database icon names to Lucide components
+const iconMap: Record<string, LucideIcon> = {
+  Home,
+  ShoppingCart,
+  Utensils,
+  Car,
+  Plane,
+  ShoppingBag,
+  Dumbbell,
+  Scissors,
+  Clapperboard,
+  CreditCard,
+  Receipt,
+  Heart,
+  CircleDollarSign,
+}
 
 // Map category names to icons and colors (case-insensitive lookup)
 const categoryConfig: Record<string, { icon: LucideIcon; color: string }> = {
@@ -118,11 +122,38 @@ function mapDBToUI(tx: DBTransaction): UITransaction {
 }
 
 export function TransactionFeed() {
-  const [categories, setCategories] = useState<Category[]>(initialCategories)
+  const [categories, setCategories] = useState<Category[]>([])
   const [transactions, setTransactions] = useState<UITransaction[]>([])
   const [loading, setLoading] = useState(true)
 
   const expectedIncome = 3500
+
+  // Fetch budgets from database
+  const fetchBudgets = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('budgets')
+      .select('*')
+      .eq('is_active', true)
+      .order('category')
+
+    if (error) {
+      console.error('Error fetching budgets:', error)
+    } else if (data) {
+      const budgetCategories: Category[] = data.map((budget: {
+        category: string
+        monthly_limit: number
+        icon: string
+        color: string
+      }) => ({
+        icon: iconMap[budget.icon] || CircleDollarSign,
+        name: budget.category,
+        total: 0,
+        budget: Number(budget.monthly_limit),
+        color: budget.color,
+      }))
+      setCategories(budgetCategories)
+    }
+  }, [])
 
   // Fetch transactions from Supabase
   const fetchTransactions = useCallback(async () => {
@@ -142,10 +173,11 @@ export function TransactionFeed() {
     setLoading(false)
   }, [])
 
-  // Load transactions on mount
+  // Load budgets and transactions on mount
   useEffect(() => {
+    fetchBudgets()
     fetchTransactions()
-  }, [fetchTransactions])
+  }, [fetchBudgets, fetchTransactions])
 
   const monthData = useMemo(() => {
     const now = new Date()
