@@ -203,7 +203,7 @@ function CategoryCard({
 export function BudgetView() {
   const [categories, setCategories] = useState<CategoryBudget[]>([])
   const [loading, setLoading] = useState(true)
-  const [expectedIncome] = useState(3500)
+  const [expectedIncome, setExpectedIncome] = useState(0)
   const [currentMonth] = useState(new Date())
 
   // Add category dropdown state
@@ -234,10 +234,31 @@ export function BudgetView() {
     setLoading(false)
   }, [])
 
+  // Fetch expected income from paystubs
+  const fetchExpectedIncome = useCallback(async () => {
+    const now = new Date()
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]
+
+    const { data, error } = await supabase
+      .from('paystubs')
+      .select('net_pay')
+      .gte('pay_date', startOfMonth)
+      .lte('pay_date', endOfMonth)
+
+    if (error) {
+      console.error('Error fetching paystubs:', error)
+    } else if (data) {
+      const totalIncome = data.reduce((sum, p) => sum + Number(p.net_pay), 0)
+      setExpectedIncome(totalIncome)
+    }
+  }, [])
+
   // Fetch on mount
   useEffect(() => {
     fetchBudgets()
-  }, [fetchBudgets])
+    fetchExpectedIncome()
+  }, [fetchBudgets, fetchExpectedIncome])
 
   // Separate categories by type
   const needsCategories = useMemo(

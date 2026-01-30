@@ -125,8 +125,7 @@ export function TransactionFeed() {
   const [categories, setCategories] = useState<Category[]>([])
   const [transactions, setTransactions] = useState<UITransaction[]>([])
   const [loading, setLoading] = useState(true)
-
-  const expectedIncome = 3500
+  const [expectedIncome, setExpectedIncome] = useState(0)
 
   // Fetch budgets from database
   const fetchBudgets = useCallback(async () => {
@@ -173,11 +172,32 @@ export function TransactionFeed() {
     setLoading(false)
   }, [])
 
-  // Load budgets and transactions on mount
+  // Fetch expected income from paystubs
+  const fetchExpectedIncome = useCallback(async () => {
+    const now = new Date()
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]
+
+    const { data, error } = await supabase
+      .from('paystubs')
+      .select('net_pay')
+      .gte('pay_date', startOfMonth)
+      .lte('pay_date', endOfMonth)
+
+    if (error) {
+      console.error('Error fetching paystubs:', error)
+    } else if (data) {
+      const totalIncome = data.reduce((sum, p) => sum + Number(p.net_pay), 0)
+      setExpectedIncome(totalIncome)
+    }
+  }, [])
+
+  // Load budgets, transactions, and expected income on mount
   useEffect(() => {
     fetchBudgets()
     fetchTransactions()
-  }, [fetchBudgets, fetchTransactions])
+    fetchExpectedIncome()
+  }, [fetchBudgets, fetchTransactions, fetchExpectedIncome])
 
   const monthData = useMemo(() => {
     const now = new Date()
