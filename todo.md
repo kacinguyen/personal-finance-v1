@@ -49,7 +49,6 @@
 - [ ] Over-budget alerts for exceeded limits
 
 ## Phase 5: Savings Page
-- [ ] **Goal Setup UI**: Define targets (Emergency Fund, Wedding, Vacation, etc.)
 - [ ] Display account balances from `accounts` table
 - [ ] Track progress toward each goal
 

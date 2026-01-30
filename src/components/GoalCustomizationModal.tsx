@@ -18,7 +18,7 @@ type GoalCustomizationModalProps = {
   onSave: (customizedGoal: {
     name: string
     amount: number
-    targetYear: number
+    targetDate: Date
     template: GoalTemplate
   }) => void
 }
@@ -26,18 +26,22 @@ type GoalCustomizationModalProps = {
 export function GoalCustomizationModal({ isOpen, goal, onClose, onSave }: GoalCustomizationModalProps) {
   const [goalName, setGoalName] = useState('')
   const [targetAmount, setTargetAmount] = useState('')
-  const [targetYear, setTargetYear] = useState(new Date().getFullYear() + 1)
+  const [targetDate, setTargetDate] = useState('')
 
-  const currentYear = new Date().getFullYear()
-  const years = Array.from({ length: 12 }, (_, i) => currentYear + i)
+  // Set default date to 1 year from now
+  const getDefaultDate = () => {
+    const date = new Date()
+    date.setFullYear(date.getFullYear() + 1)
+    return date.toISOString().split('T')[0]
+  }
 
   useEffect(() => {
     if (goal) {
       setGoalName(goal.name)
       setTargetAmount(goal.suggestedAmount > 0 ? goal.suggestedAmount.toString() : '')
-      setTargetYear(currentYear + 1)
+      setTargetDate(getDefaultDate())
     }
-  }, [goal, currentYear])
+  }, [goal])
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -54,15 +58,24 @@ export function GoalCustomizationModal({ isOpen, goal, onClose, onSave }: GoalCu
   }, [isOpen, onClose])
 
   const handleSave = () => {
-    if (goal && goalName.trim() && targetAmount && parseFloat(targetAmount) > 0) {
+    if (goal && goalName.trim() && targetAmount && parseFloat(targetAmount) > 0 && targetDate) {
       onSave({
         name: goalName.trim(),
         amount: parseFloat(targetAmount),
-        targetYear,
+        targetDate: new Date(targetDate),
         template: goal,
       })
       onClose()
     }
+  }
+
+  // Calculate months until target for summary display
+  const getMonthsUntilTarget = () => {
+    if (!targetDate) return 0
+    const target = new Date(targetDate)
+    const now = new Date()
+    const months = (target.getFullYear() - now.getFullYear()) * 12 + (target.getMonth() - now.getMonth())
+    return Math.max(1, months)
   }
 
   if (!goal) return null
@@ -152,34 +165,23 @@ export function GoalCustomizationModal({ isOpen, goal, onClose, onSave }: GoalCu
                   </div>
                 </div>
 
-                {/* Target Year */}
+                {/* Target Date */}
                 <div>
                   <label className="flex items-center gap-2 text-sm font-semibold text-[#1F1410]/70 mb-2">
                     <Calendar className="w-4 h-4" />
-                    Target Year
+                    Target Date
                   </label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {years.map((year) => (
-                      <motion.button
-                        key={year}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => setTargetYear(year)}
-                        className="py-2.5 rounded-lg font-medium text-sm transition-all"
-                        style={{
-                          backgroundColor: targetYear === year ? `${goal.color}15` : 'rgba(31, 20, 16, 0.05)',
-                          color: targetYear === year ? goal.color : 'rgba(31, 20, 16, 0.6)',
-                          border: `2px solid ${targetYear === year ? goal.color : 'transparent'}`,
-                        }}
-                      >
-                        {year}
-                      </motion.button>
-                    ))}
-                  </div>
+                  <input
+                    type="date"
+                    value={targetDate}
+                    onChange={(e) => setTargetDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="w-full px-4 py-3 rounded-xl border-2 border-[#1F1410]/10 focus:border-[#1F1410]/20 focus:outline-none focus:ring-4 focus:ring-[#1F1410]/5 transition-all text-[#1F1410]"
+                  />
                 </div>
 
                 {/* Summary */}
-                {goalName && targetAmount && parseFloat(targetAmount) > 0 && (
+                {goalName && targetAmount && parseFloat(targetAmount) > 0 && targetDate && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
@@ -188,8 +190,11 @@ export function GoalCustomizationModal({ isOpen, goal, onClose, onSave }: GoalCu
                   >
                     <p className="text-sm text-[#1F1410]/60 mb-1">You'll need to save approximately:</p>
                     <p className="text-2xl font-bold" style={{ color: goal.color }}>
-                      ${Math.round(parseFloat(targetAmount) / ((targetYear - currentYear) * 12)).toLocaleString()}
+                      ${Math.round(parseFloat(targetAmount) / getMonthsUntilTarget()).toLocaleString()}
                       <span className="text-base font-medium text-[#1F1410]/50"> / month</span>
+                    </p>
+                    <p className="text-xs text-[#1F1410]/40 mt-1">
+                      {getMonthsUntilTarget()} months until {new Date(targetDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                     </p>
                   </motion.div>
                 )}

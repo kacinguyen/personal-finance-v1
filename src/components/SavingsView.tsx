@@ -35,7 +35,7 @@ type ActiveGoal = {
   color: string
   currentAmount: number
   targetAmount: number
-  targetYear: number
+  targetDate: Date
   monthlyTarget: number
   status: 'on-track' | 'ahead' | 'behind'
 }
@@ -55,19 +55,34 @@ export function SavingsView() {
   const [selectedGoal, setSelectedGoal] = useState<GoalTemplate | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
-
-  const activeGoals: ActiveGoal[] = [
-    { id: '1', name: 'Emergency Fund', icon: Shield, color: '#10B981', currentAmount: 6500, targetAmount: 10000, targetYear: 2025, monthlyTarget: 417, status: 'on-track' },
-    { id: '2', name: 'Dream Vacation', icon: Plane, color: '#38BDF8', currentAmount: 2800, targetAmount: 5000, targetYear: 2024, monthlyTarget: 200, status: 'ahead' },
-  ]
+  const [activeGoals, setActiveGoals] = useState<ActiveGoal[]>([])
 
   const handleSelectGoal = (goal: GoalTemplate) => {
     setSelectedGoal(goal)
     setIsModalOpen(true)
   }
 
-  const handleSaveGoal = (customizedGoal: { name: string; amount: number; targetYear: number; template: GoalTemplate }) => {
-    console.log('Saved goal:', customizedGoal)
+  const handleSaveGoal = (customizedGoal: { name: string; amount: number; targetDate: Date; template: GoalTemplate }) => {
+    const now = new Date()
+    const monthsUntilTarget = (customizedGoal.targetDate.getFullYear() - now.getFullYear()) * 12 +
+      (customizedGoal.targetDate.getMonth() - now.getMonth())
+    const monthlyTarget = monthsUntilTarget > 0 ? Math.round(customizedGoal.amount / monthsUntilTarget) : customizedGoal.amount
+
+    const newGoal: ActiveGoal = {
+      id: crypto.randomUUID(),
+      name: customizedGoal.name,
+      icon: customizedGoal.template.icon,
+      color: customizedGoal.template.color,
+      currentAmount: 0,
+      targetAmount: customizedGoal.amount,
+      targetDate: customizedGoal.targetDate,
+      monthlyTarget,
+      status: 'on-track',
+    }
+
+    // Prepend new goal to the top
+    setActiveGoals(prev => [newGoal, ...prev])
+    setShowTemplates(false)
   }
 
   const getStatusColor = (status: ActiveGoal['status']) => {
@@ -147,7 +162,9 @@ export function SavingsView() {
                           <h3 className="font-bold text-lg text-[#1F1410]">{goal.name}</h3>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <Calendar className="w-3.5 h-3.5 text-[#1F1410]/40" />
-                            <span className="text-xs text-[#1F1410]/50">Target: {goal.targetYear}</span>
+                            <span className="text-xs text-[#1F1410]/50">
+                              Target: {goal.targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -189,7 +206,7 @@ export function SavingsView() {
                     <div className="p-3 rounded-xl" style={{ backgroundColor: `${statusColor}08` }}>
                       <p className="text-xs text-[#1F1410]/70">
                         {goal.status === 'ahead' && <>You're ahead of schedule! Keep up the great work.</>}
-                        {goal.status === 'on-track' && <>You're on track to reach your goal by {goal.targetYear}.</>}
+                        {goal.status === 'on-track' && <>You're on track to reach your goal by {goal.targetDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.</>}
                         {goal.status === 'behind' && <>Consider increasing monthly contributions to stay on track.</>}
                       </p>
                     </div>
