@@ -1,50 +1,66 @@
 # Finance App Build Roadmap
 
-# Finance App Build Roadmap (Page-Based Approach)
-
-## Phase 1: Foundation & Transaction Data
+## Phase 1: Database Schemas
 - [x] **Configure Magic Patterns MCP**: Scaffold React + Tailwind structure
-- [ ] **Initialize Database Schema (Supabase)**
-    - [X] Create `transactions` table (date, amount, merchant, category_id)
-- [ ] **Transaction Importer (CSV)**
-    - [X] Build file upload for Bank CSVs
-    - [X] Map data schema to components
-    <!-- - [ ] Implement "Schema Mapper" to standardize columns from different banks -->
+- [x] Create `transactions` table (date, amount, merchant, category_id)
+- [x] Create `paystubs` table (net_pay, gross_pay, 401k_contrib, espp_contrib, rsu_vest, pay_date)
+- [ ] Create `accounts` table (balance starts at 0 until user configures)
+    - account_type: 'checking', 'savings', 'hysa', '401k', 'brokerage', 'espp'
+    - institution_name, account_name
+    - current_balance, available_balance (default 0)
+    - plaid_account_id (for future Plaid linking)
+- [x] Create `budgets` table (monthly_limit, budget_type: need/want, flexibility: fixed/variable, icon, color)
+- [x] Connect BudgetView to database (fetch, update, create categories)
+- [ ] Create `goals` table (target_amount, current_amount, deadline)
 
-## Phase 2: Income Page (The "Source")
-- [ ] **Initialize Database Schema (Supabase)**
-    - [X] Create `paystubs` table (net_pay, gross_pay, 401k_contrib, espp_contrib, rsu_vest, pay_date)
-- [ ] **Paystub Parser (OCR/PDF)**
-    - [ ] Integrate a parser (e.g., PDF.js or an AI service) to read paystub PDFs
-    - [ ] **Logic:** Extract "Net Pay" for the *Income Dashboard*
-    - [ ] **Logic:** Extract "Deductions" (401k, ESPP, Taxes) for the *Savings Dashboard*
-    - [ ] Build a confirmation modal showing extracted and mapped fields for user to confirm
-    - [ ] Build PDF preview to cross-compare each field with the uploaded document
-        - [ ] Zoom in on doc preview
-        - [ ] Highlight relevant field
-- [ ] **Income Dashboard UI**: Display monthly take-home trends vs Gross Pay
+## Phase 2: Sample Data & Page Scaffolding
+- [x] Build CSV file upload for Bank transactions
+- [x] Map transaction data schema to components
+- [ ] Insert sample transactions (mixed categories)
+- [ ] Insert sample paystub data
+- [x] Insert default categories (via budgets table migration)
+- [ ] Wire up each page to display its own data
 
-## Phase 3: Budget Setup & Category Mapping
-- [ ] **Category Manager**:
-    - [ ] Create `categories` table with `monthly_limit` column
-    - [ ] Build UI to create/edit categories (e.g., "Dining," "Utilities")
-- [ ] **Mapping Engine**:
-    - [ ] Build logic to map imported Transaction merchants to Categories
+## Phase 3: Income Page
+- [ ] Display paystub list with earnings breakdown
+- [ ] Monthly take-home trends chart (Net Pay vs Gross Pay)
+- [ ] **Paystub PDF Import**:
+    - [ ] Integrate parser (PDF.js or AI service) to read paystub PDFs
+    - [ ] Extract "Net Pay" for Income Dashboard
+    - [ ] Extract "Deductions" (401k, ESPP, Taxes) for Savings Dashboard
+    - [ ] Build confirmation modal showing extracted fields for user review
+    - [ ] Build PDF preview to cross-compare fields with uploaded document
+
+## Phase 4: Budget & Expenses Page
+- [x] **Category Manager UI**:
+    - [x] Create/edit categories with monthly limits
+    - [x] Category icons and color picker
+    - [x] Needs vs Wants separation with visual breakdown
+- [ ] **Transaction-to-Category Mapping**:
+    - [ ] Build mapping engine for merchants to categories
     - [ ] Create "Rules" UI (e.g., "Always map 'Uber' to 'Transport'")
-
-## Phase 4: Expenses Page (Tracking)
 - [ ] **Expense Dashboard**:
-    - [ ] **Logic:** Aggregate transactions by category for the current month
-    - [ ] **Visual:** "Progress Bars" for each budget category (e.g., $400 / $500 spent)
-- [ ] **Alerts**: Highlight categories that have exceeded defined limits
+    - [ ] Aggregate transactions by category for current month
+    - [ ] Budget progress bars per category (e.g., $400 / $500 spent)
+- [ ] Over-budget alerts for exceeded limits
 
-## Phase 5: Savings Page & Goal Allocation
-- [ ] **Goal Setup**: UI to define targets (e.g., "Emergency Fund: $15k", "Wedding: $30k")
-- [ ] **Asset Allocation Logic**:
-    - [ ] Auto-log 401k/ESPP contributions from Phase 2 (Paystubs) as "Savings Progress"
-    - [ ] Calculate "Unallocated Cash" (Income - Expenses)
-    - [ ] Suggest distribution of unallocated cash into specific goals
+## Phase 5: Savings Page
+- [ ] **Goal Setup UI**: Define targets (Emergency Fund, Wedding, Vacation, etc.)
+- [ ] Display account balances from `accounts` table
+- [ ] Track progress toward each goal
 
-## Phase 6: Live Automation (Plaid)
-- [ ] **Link Bank Accounts**: Replace CSV upload with Plaid Transactions API
-- [ ] **Link Investment Accounts**: Sync current balances for 401k/Brokerage to update "Net Worth"
+## Phase 6: Cross-Page Data Flow
+- [ ] Auto-log 401k/ESPP contributions from paystubs to savings progress
+- [ ] Calculate "Unallocated Cash" (Income - Expenses)
+- [ ] Recommend goal allocations based on "waterfall" rules:
+    1. Safety Net (3 months expenses in HYSA)
+    2. Maximize Employer 401k Match
+    3. High-interest debt (>7%) repayment
+    4. ESPP if discount >10% with immediate sell
+    5. RSU diversification (sell-to-cover)
+
+## Phase 7: Live Automation (Plaid)
+- [ ] Link bank accounts via Plaid Transactions API
+- [ ] Sync investment account balances (401k/Brokerage)
+- [ ] Replace CSV import with live transaction sync
+- [ ] Update "Net Worth" with real-time data
