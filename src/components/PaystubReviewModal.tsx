@@ -176,32 +176,32 @@ export function PaystubReviewModal({
     setError(null)
 
     try {
-      // TODO: Re-enable Supabase save when ready for production
-      // // Build the insert object from editable values
-      // const insertData = parsedToInsert(parsedData, fileName)
-      //
-      // // Override with any user edits
-      // Object.entries(editableValues).forEach(([key, value]) => {
-      //   if (key in insertData) {
-      //     if (value === '' || value === null) {
-      //       (insertData as Record<string, unknown>)[key] = null
-      //     } else if (typeof value === 'string' && !isNaN(parseFloat(value))) {
-      //       (insertData as Record<string, unknown>)[key] = parseFloat(value)
-      //     } else {
-      //       (insertData as Record<string, unknown>)[key] = value
-      //     }
-      //   }
-      // })
-      //
-      // const result = await savePaystub(insertData)
-      //
-      // if (!result.success) {
-      //   setError(result.error || 'Failed to save paystub')
-      //   return
-      // }
+      // Build the insert object from editable values
+      const insertData = parsedToInsert(parsedData, fileName)
 
-      // Simulate a brief delay for UX feedback
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      // Override with any user edits
+      const dateFields = ['pay_date', 'pay_period_start', 'pay_period_end']
+      Object.entries(editableValues).forEach(([key, value]) => {
+        if (key in insertData) {
+          if (value === '' || value === null) {
+            (insertData as Record<string, unknown>)[key] = null
+          } else if (dateFields.includes(key)) {
+            // Keep date fields as strings (don't convert to number)
+            (insertData as Record<string, unknown>)[key] = value
+          } else if (typeof value === 'string' && !isNaN(parseFloat(value))) {
+            (insertData as Record<string, unknown>)[key] = parseFloat(value)
+          } else {
+            (insertData as Record<string, unknown>)[key] = value
+          }
+        }
+      })
+
+      const result = await savePaystub(insertData)
+
+      if (!result.success) {
+        setError(result.error || 'Failed to save paystub')
+        return
+      }
 
       // Pass net pay to parent for income source addition
       const netPay = typeof editableValues.net_pay === 'number'
