@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import {
   TrendingUp,
@@ -8,7 +8,6 @@ import {
   DollarSign,
   Plus,
   Briefcase,
-  Wallet,
   LucideIcon,
   Loader2,
   AlertCircle,
@@ -18,6 +17,16 @@ import {
 import { processPaystubPDF, type ImportResult } from '../lib/paystubImport'
 import { isPDFFile } from '../lib/pdfExtractor'
 import { PaystubReviewModal } from './PaystubReviewModal'
+import { supabase } from '../lib/supabase'
+
+type PaystubRecord = {
+  id: string
+  pay_date: string
+  net_pay: number
+  gross_pay: number
+  employer_name: string | null
+  source_file_name: string | null
+}
 
 type IncomeSource = {
   name: string
@@ -33,7 +42,6 @@ type ConnectedBank = {
 }
 
 export function IncomeView() {
-  const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // PDF import state
@@ -45,29 +53,69 @@ export function IncomeView() {
   const [currentPdfFile, setCurrentPdfFile] = useState<File | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
+  // Paystub data from database
+  const [paystubs, setPaystubs] = useState<PaystubRecord[]>([])
+  const [loadingPaystubs, setLoadingPaystubs] = useState(true)
+
   const connectedBanks: ConnectedBank[] = [
     { name: 'Chase Checking', lastSync: '2 hours ago', accountType: 'Checking' },
     { name: 'Wells Fargo Savings', lastSync: '1 day ago', accountType: 'Savings' },
   ]
 
-  const uploadedDocuments = uploadedFiles.length || 3 // Default to 3 for demo purposes
+  // Fetch paystubs from database
+  const fetchPaystubs = useCallback(async () => {
+    setLoadingPaystubs(true)
+    const { data, error } = await supabase
+      .from('paystubs')
+      .select('id, pay_date, net_pay, gross_pay, employer_name, source_file_name')
+      .order('pay_date', { ascending: false })
 
-  const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([
-    { name: 'Salary', amount: 3000, icon: Briefcase, color: '#10B981' },
-    { name: 'Freelance', amount: 800, icon: Wallet, color: '#38BDF8' },
-    { name: 'Investments', amount: 250, icon: TrendingUp, color: '#A855F7' },
-  ])
+    if (error) {
+      console.error('Error fetching paystubs:', error)
+    } else if (data) {
+      setPaystubs(data)
+    }
+    setLoadingPaystubs(false)
+  }, [])
+
+  // Fetch on mount
+  useEffect(() => {
+    fetchPaystubs()
+  }, [fetchPaystubs])
+
+  // Calculate income from paystubs (current month)
+  const currentMonthPaystubs = paystubs.filter((p) => {
+    const payDate = new Date(p.pay_date)
+    const now = new Date()
+    return payDate.getMonth() === now.getMonth() && payDate.getFullYear() === now.getFullYear()
+  })
+
+  const salaryIncome = currentMonthPaystubs.reduce((sum, p) => sum + Number(p.net_pay), 0)
+
+  // Build income sources from paystub data
+  const incomeSources: IncomeSource[] = salaryIncome > 0
+    ? [{ name: 'Salary', amount: salaryIncome, icon: Briefcase, color: '#10B981' }]
+    : []
 
   const totalExpectedIncome = incomeSources.reduce((sum, source) => sum + source.amount, 0)
-  const previousMonthIncome = 3500
+
+  // Previous month income for comparison
+  const previousMonthPaystubs = paystubs.filter((p) => {
+    const payDate = new Date(p.pay_date)
+    const now = new Date()
+    const prevMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1
+    const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+    return payDate.getMonth() === prevMonth && payDate.getFullYear() === prevYear
+  })
+  const previousMonthIncome = previousMonthPaystubs.reduce((sum, p) => sum + Number(p.net_pay), 0)
+
   const incomeChange = totalExpectedIncome - previousMonthIncome
-  const incomeChangePercentage = (incomeChange / previousMonthIncome) * 100
+  const incomeChangePercentage = previousMonthIncome > 0 ? (incomeChange / previousMonthIncome) * 100 : 0
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return
 
     const files = Array.from(e.target.files)
-    setUploadedFiles((prev) => [...prev, ...files])
 
     // Check for PDF files to process
     const pdfFiles = files.filter(isPDFFile)
@@ -107,23 +155,13 @@ export function IncomeView() {
     setCurrentPdfFile(null)
   }
 
-  const handleSaveSuccess = (netPay?: number) => {
+  const handleSaveSuccess = () => {
     setSuccessMessage(`Paystub from "${currentFileName}" saved successfully!`)
     // Clear the success message after 5 seconds
     setTimeout(() => setSuccessMessage(null), 5000)
 
-    // Add as income source if net pay is provided
-    if (netPay && netPay > 0) {
-      setIncomeSources((prev) => [
-        ...prev,
-        {
-          name: 'Pay Slip Income',
-          amount: netPay,
-          icon: Briefcase,
-          color: '#6366F1',
-        },
-      ])
-    }
+    // Refetch paystubs to update income display
+    fetchPaystubs()
   }
 
   const handleBankIntegration = () => {
@@ -193,7 +231,9 @@ export function IncomeView() {
                   </span>
                 </div>
               </div>
-              <p className="text-xs text-[#1F1410]/40 mt-2">Based on uploaded documents and bank data</p>
+              <p className="text-xs text-[#1F1410]/40 mt-2">
+                Based on {currentMonthPaystubs.length} paystub{currentMonthPaystubs.length !== 1 ? 's' : ''} this month
+              </p>
             </div>
             <motion.div
               initial={{ scale: 0 }}
@@ -207,42 +247,56 @@ export function IncomeView() {
 
           {/* Income Sources Breakdown */}
           <div className="space-y-3">
-            <p className="text-sm font-semibold text-[#1F1410]/70 mb-3">Income Sources</p>
-            {incomeSources.map((source, index) => {
-              const Icon = source.icon
-              const percentage = (source.amount / totalExpectedIncome) * 100
-              return (
-                <motion.div
-                  key={`${source.name}-${index}`}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.5 + index * 0.1, duration: 0.3 }}
-                  className="flex items-center gap-4"
-                >
-                  <div
-                    className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: `${source.color}15` }}
+            <p className="text-sm font-semibold text-[#1F1410]/70 mb-3">Salary Income</p>
+            {loadingPaystubs ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-5 h-5 text-[#10B981] animate-spin" />
+              </div>
+            ) : currentMonthPaystubs.length === 0 ? (
+              <p className="text-sm text-[#1F1410]/40 py-4 text-center">
+                No paystubs uploaded for this month
+              </p>
+            ) : (
+              currentMonthPaystubs.map((paystub, index) => {
+                const percentage = totalExpectedIncome > 0 ? (Number(paystub.net_pay) / totalExpectedIncome) * 100 : 0
+                const payDate = new Date(paystub.pay_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                return (
+                  <motion.div
+                    key={paystub.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.5 + index * 0.1, duration: 0.3 }}
+                    className="flex items-center gap-4"
                   >
-                    <Icon className="w-5 h-5" style={{ color: source.color }} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-[#1F1410]">{source.name}</span>
-                      <span className="text-sm font-bold text-[#1F1410]">${source.amount.toLocaleString()}</span>
+                    <div
+                      className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: '#10B98115' }}
+                    >
+                      <Briefcase className="w-5 h-5" style={{ color: '#10B981' }} />
                     </div>
-                    <div className="h-1.5 bg-[#1F1410]/5 rounded-full overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${percentage}%` }}
-                        transition={{ delay: 0.7 + index * 0.1, duration: 0.6, ease: 'easeOut' }}
-                        className="h-full rounded-full"
-                        style={{ backgroundColor: source.color }}
-                      />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-[#1F1410]">
+                          Paycheck ({payDate})
+                        </span>
+                        <span className="text-sm font-bold text-[#1F1410]">
+                          ${Number(paystub.net_pay).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-[#1F1410]/5 rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${percentage}%` }}
+                          transition={{ delay: 0.7 + index * 0.1, duration: 0.6, ease: 'easeOut' }}
+                          className="h-full rounded-full"
+                          style={{ backgroundColor: '#10B981' }}
+                        />
+                      </div>
                     </div>
-                  </div>
-                </motion.div>
-              )
-            })}
+                  </motion.div>
+                )
+              })
+            )}
           </div>
         </motion.div>
 
@@ -311,9 +365,9 @@ export function IncomeView() {
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-medium text-[#1F1410]">
-                    {uploadedDocuments} {uploadedDocuments === 1 ? 'document' : 'documents'}
+                    {loadingPaystubs ? '...' : paystubs.length} {paystubs.length === 1 ? 'paystub' : 'paystubs'}
                   </p>
-                  <p className="text-xs text-[#1F1410]/40">Pay stubs and tax returns</p>
+                  <p className="text-xs text-[#1F1410]/40">Uploaded salary documents</p>
                 </div>
               </motion.div>
             </div>
