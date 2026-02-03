@@ -16,6 +16,7 @@ import type { ParsedPaystub, ParsedField } from '../lib/adpPaystubParser'
 import type { ValidationResult } from '../lib/paystubImport'
 import { parsedToInsert, savePaystub } from '../lib/paystubImport'
 import { PDFPreview } from './PDFPreview'
+import { useUser } from '../hooks/useUser'
 
 interface PaystubReviewModalProps {
   isOpen: boolean
@@ -49,6 +50,7 @@ export function PaystubReviewModal({
   pdfFile,
   onSaveSuccess,
 }: PaystubReviewModalProps) {
+  const { userId } = useUser()
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editingField, setEditingField] = useState<string | null>(null)
@@ -172,6 +174,11 @@ export function PaystubReviewModal({
   }
 
   const handleSave = async () => {
+    if (!userId) {
+      setError('You must be logged in to save paychecks')
+      return
+    }
+
     setIsSaving(true)
     setError(null)
 
@@ -196,10 +203,10 @@ export function PaystubReviewModal({
         }
       })
 
-      const result = await savePaystub(insertData)
+      const result = await savePaystub(insertData, userId)
 
       if (!result.success) {
-        setError(result.error || 'Failed to save paystub')
+        setError(result.error || 'Failed to save paycheck')
         return
       }
 

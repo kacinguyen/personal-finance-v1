@@ -83,14 +83,48 @@ export function IncomeView() {
     fetchPaystubs()
   }, [fetchPaystubs])
 
-  // Calculate income from paystubs (current month)
+  // Calculate income from paystubs
+  // Smart logic: use current month if available, otherwise use most recent month's data
+  const now = new Date()
+
   const currentMonthPaystubs = paystubs.filter((p) => {
     const payDate = new Date(p.pay_date)
-    const now = new Date()
     return payDate.getMonth() === now.getMonth() && payDate.getFullYear() === now.getFullYear()
   })
 
-  const salaryIncome = currentMonthPaystubs.reduce((sum, p) => sum + Number(p.net_pay), 0)
+  // Group all paystubs by month to find recent data
+  const paysByMonth: Record<string, { total: number; paystubs: PaystubRecord[] }> = {}
+  paystubs.forEach((p) => {
+    const payDate = new Date(p.pay_date)
+    const monthKey = `${payDate.getFullYear()}-${payDate.getMonth()}`
+    if (!paysByMonth[monthKey]) {
+      paysByMonth[monthKey] = { total: 0, paystubs: [] }
+    }
+    paysByMonth[monthKey].total += Number(p.net_pay)
+    paysByMonth[monthKey].paystubs.push(p)
+  })
+
+  // Determine which paystubs to show and use for income
+  const currentMonthKey = `${now.getFullYear()}-${now.getMonth()}`
+  let displayPaystubs: PaystubRecord[] = currentMonthPaystubs
+  let salaryIncome = currentMonthPaystubs.reduce((sum, p) => sum + Number(p.net_pay), 0)
+  let usingHistoricalData = false
+
+  // If no current month data, use most recent month
+  if (currentMonthPaystubs.length === 0 && Object.keys(paysByMonth).length > 0) {
+    const sortedMonths = Object.keys(paysByMonth).sort((a, b) => {
+      const [yearA, monthA] = a.split('-').map(Number)
+      const [yearB, monthB] = b.split('-').map(Number)
+      return yearB - yearA || monthB - monthA
+    })
+
+    if (sortedMonths.length > 0 && sortedMonths[0] !== currentMonthKey) {
+      const recentMonth = paysByMonth[sortedMonths[0]]
+      displayPaystubs = recentMonth.paystubs
+      salaryIncome = recentMonth.total
+      usingHistoricalData = true
+    }
+  }
 
   // Build income sources from paystub data
   const incomeSources: IncomeSource[] = salaryIncome > 0
@@ -156,7 +190,7 @@ export function IncomeView() {
   }
 
   const handleSaveSuccess = () => {
-    setSuccessMessage(`Paystub from "${currentFileName}" saved successfully!`)
+    setSuccessMessage(`Paycheck from "${currentFileName}" saved successfully!`)
     // Clear the success message after 5 seconds
     setTimeout(() => setSuccessMessage(null), 5000)
 
@@ -232,7 +266,11 @@ export function IncomeView() {
                 </div>
               </div>
               <p className="text-xs text-[#1F1410]/40 mt-2">
-                Based on {currentMonthPaystubs.length} paystub{currentMonthPaystubs.length !== 1 ? 's' : ''} this month
+                {usingHistoricalData ? (
+                  <>Based on {displayPaystubs.length} paycheck{displayPaystubs.length !== 1 ? 's' : ''} from previous month</>
+                ) : (
+                  <>Based on {currentMonthPaystubs.length} paycheck{currentMonthPaystubs.length !== 1 ? 's' : ''} this month</>
+                )}
               </p>
             </div>
             <motion.div
@@ -247,17 +285,24 @@ export function IncomeView() {
 
           {/* Income Sources Breakdown */}
           <div className="space-y-3">
-            <p className="text-sm font-semibold text-[#1F1410]/70 mb-3">Salary Income</p>
+            <div className="flex items-center gap-2 mb-3">
+              <p className="text-sm font-semibold text-[#1F1410]/70">Salary Income</p>
+              {usingHistoricalData && (
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F59E0B]/10 text-[#F59E0B]">
+                  Based on recent data
+                </span>
+              )}
+            </div>
             {loadingPaystubs ? (
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="w-5 h-5 text-[#10B981] animate-spin" />
               </div>
-            ) : currentMonthPaystubs.length === 0 ? (
+            ) : displayPaystubs.length === 0 ? (
               <p className="text-sm text-[#1F1410]/40 py-4 text-center">
-                No paystubs uploaded for this month
+                No paychecks uploaded yet
               </p>
             ) : (
-              currentMonthPaystubs.map((paystub, index) => {
+              displayPaystubs.map((paystub, index) => {
                 const percentage = totalExpectedIncome > 0 ? (Number(paystub.net_pay) / totalExpectedIncome) * 100 : 0
                 const payDate = new Date(paystub.pay_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
                 return (
@@ -342,16 +387,16 @@ export function IncomeView() {
               </div>
             </div>
 
-            {/* Pay Slips */}
+            {/* Paychecks */}
             <div>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-[#1F1410]/70">Pay Slips</h3>
+                <h3 className="text-sm font-semibold text-[#1F1410]/70">Paychecks</h3>
                 <button
                   onClick={handleUploadDocument}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[#10B981] hover:bg-[#10B981]/5 transition-colors"
                 >
                   <Upload className="w-3.5 h-3.5" />
-                  <span>Upload Pay Slip</span>
+                  <span>Upload Paycheck</span>
                 </button>
               </div>
               <motion.div
@@ -365,7 +410,7 @@ export function IncomeView() {
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-medium text-[#1F1410]">
-                    {loadingPaystubs ? '...' : paystubs.length} {paystubs.length === 1 ? 'paystub' : 'paystubs'}
+                    {loadingPaystubs ? '...' : paystubs.length} {paystubs.length === 1 ? 'paycheck' : 'paychecks'}
                   </p>
                   <p className="text-xs text-[#1F1410]/40">Uploaded salary documents</p>
                 </div>
