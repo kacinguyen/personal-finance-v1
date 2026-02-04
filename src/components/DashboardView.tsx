@@ -1,4 +1,4 @@
-import React from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
   LayoutDashboard,
@@ -8,82 +8,288 @@ import {
   TrendingUp,
   ArrowUpRight,
   ArrowDownRight,
-  Check,
-  X,
-  Minus,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
+import {
+  ComposedChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts'
+import { supabase } from '../lib/supabase'
+import { MonthPicker, getMonthRange, getMonthData } from './MonthPicker'
 
-type MonthStatus = {
+type YearlyChartData = {
   month: string
-  status: 'under' | 'over' | 'on-track' | 'pending'
-  difference: number
+  monthIndex: number
   spent: number
   budget: number
+  income: number
 }
 
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
 export function DashboardView() {
-  const monthData = {
-    currentDay: 22,
-    daysInMonth: 31,
-    daysRemaining: 9,
-    daysElapsed: 22,
-  }
+  const [totalSpent, setTotalSpent] = useState(0)
+  const [expectedIncome, setExpectedIncome] = useState(0)
+  const [totalBudget, setTotalBudget] = useState(0)
+  const [yearlyChartData, setYearlyChartData] = useState<YearlyChartData[]>([])
+  const [chartYear, setChartYear] = useState(() => new Date().getFullYear())
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), 1)
+  })
 
-  const expectedIncome = 3500
-  const totalSpent = 472.5
-  const totalBudget = 1950
+  // Available years for the chart (current year and 2 previous)
+  const currentYear = new Date().getFullYear()
+  const availableYears = [currentYear - 2, currentYear - 1, currentYear]
 
-  const budgetTracking = {
-    totalBudget,
-    expectedSpending:
-      (totalBudget * monthData.daysElapsed) / monthData.daysInMonth,
-    remainingIncome: expectedIncome - totalSpent,
-    percentageOfIncome: (totalSpent / expectedIncome) * 100,
-    percentageOfBudget: (totalSpent / totalBudget) * 100,
-    status: 'under' as const,
-    statusColor: '#10B981',
-    statusText: 'Under budget',
-  }
+  // Calculate month data based on selected month
+  const monthData = useMemo(() => {
+    return getMonthData(selectedMonth)
+  }, [selectedMonth])
 
-  const monthlyStatus: MonthStatus[] = [
-    { month: 'Jan', status: 'under', difference: -127.5, spent: 472.5, budget: 600 },
-    { month: 'Feb', status: 'pending', difference: 0, spent: 0, budget: 600 },
-    { month: 'Mar', status: 'pending', difference: 0, spent: 0, budget: 600 },
-    { month: 'Apr', status: 'pending', difference: 0, spent: 0, budget: 600 },
-    { month: 'May', status: 'pending', difference: 0, spent: 0, budget: 600 },
-    { month: 'Jun', status: 'pending', difference: 0, spent: 0, budget: 600 },
-    { month: 'Jul', status: 'pending', difference: 0, spent: 0, budget: 600 },
-    { month: 'Aug', status: 'pending', difference: 0, spent: 0, budget: 600 },
-    { month: 'Sep', status: 'pending', difference: 0, spent: 0, budget: 600 },
-    { month: 'Oct', status: 'pending', difference: 0, spent: 0, budget: 600 },
-    { month: 'Nov', status: 'pending', difference: 0, spent: 0, budget: 600 },
-    { month: 'Dec', status: 'pending', difference: 0, spent: 0, budget: 600 },
-  ]
+  // Fetch total spent from transactions for selected month
+  const fetchTotalSpent = useCallback(async () => {
+    const { startOfMonth, endOfMonth } = getMonthRange(selectedMonth)
 
-  const getStatusColor = (status: MonthStatus['status']) => {
-    switch (status) {
-      case 'under':
-        return '#10B981'
-      case 'over':
-        return '#FF6B6B'
-      case 'on-track':
-        return '#F59E0B'
-      case 'pending':
-        return 'rgba(31, 20, 16, 0.2)'
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('amount')
+      .gte('date', startOfMonth)
+      .lte('date', endOfMonth)
+
+    if (error) {
+      console.error('Error fetching transactions:', error)
+    } else if (data) {
+      const total = data.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
+      setTotalSpent(total)
     }
-  }
+  }, [selectedMonth])
 
-  const getStatusIcon = (status: MonthStatus['status']) => {
-    switch (status) {
-      case 'under':
-        return Check
-      case 'over':
-        return X
-      case 'on-track':
-        return Minus
-      case 'pending':
-        return Calendar
+  // Fetch expected income from paystubs for selected month
+  // Smart logic: use selected month if available, otherwise use most recent month's data
+  const fetchExpectedIncome = useCallback(async () => {
+    const { startOfMonth, endOfMonth } = getMonthRange(selectedMonth)
+
+    // First try to get paystubs for the selected month
+    const { data: selectedMonthData, error: selectedError } = await supabase
+      .from('paystubs')
+      .select('net_pay, pay_date')
+      .gte('pay_date', startOfMonth)
+      .lte('pay_date', endOfMonth)
+
+    if (selectedError) {
+      console.error('Error fetching paystubs:', selectedError)
+      return
     }
+
+    if (selectedMonthData && selectedMonthData.length > 0) {
+      const total = selectedMonthData.reduce((sum, p) => sum + Number(p.net_pay), 0)
+      setExpectedIncome(total)
+      return
+    }
+
+    // No data for selected month - fetch recent data to use as estimate
+    const sixMonthsAgo = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 6, 1).toISOString().split('T')[0]
+
+    const { data, error } = await supabase
+      .from('paystubs')
+      .select('net_pay, pay_date')
+      .gte('pay_date', sixMonthsAgo)
+      .order('pay_date', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching paystubs:', error)
+      return
+    }
+
+    if (!data || data.length === 0) {
+      setExpectedIncome(0)
+      return
+    }
+
+    // Group paystubs by month and use most recent
+    const paysByMonth: Record<string, number> = {}
+    data.forEach((p) => {
+      const payDate = new Date(p.pay_date)
+      const monthKey = `${payDate.getFullYear()}-${payDate.getMonth()}`
+      paysByMonth[monthKey] = (paysByMonth[monthKey] || 0) + Number(p.net_pay)
+    })
+
+    const sortedMonths = Object.keys(paysByMonth).sort((a, b) => {
+      const [yearA, monthA] = a.split('-').map(Number)
+      const [yearB, monthB] = b.split('-').map(Number)
+      return yearB - yearA || monthB - monthA
+    })
+
+    if (sortedMonths.length > 0) {
+      setExpectedIncome(paysByMonth[sortedMonths[0]])
+    } else {
+      setExpectedIncome(0)
+    }
+  }, [selectedMonth])
+
+  // Fetch total budget from budgets
+  const fetchTotalBudget = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('budgets')
+      .select('monthly_limit')
+      .eq('is_active', true)
+
+    if (error) {
+      console.error('Error fetching budgets:', error)
+    } else if (data) {
+      const total = data.reduce((sum, b) => sum + Number(b.monthly_limit), 0)
+      setTotalBudget(total)
+    }
+  }, [])
+
+  // Fetch yearly data for chart
+  const fetchYearlyData = useCallback(async () => {
+    const startOfYear = `${chartYear}-01-01`
+    const endOfYear = `${chartYear}-12-31`
+
+    // Fetch all transactions for the year
+    const { data: transactions, error: txError } = await supabase
+      .from('transactions')
+      .select('amount, date')
+      .gte('date', startOfYear)
+      .lte('date', endOfYear)
+
+    if (txError) {
+      console.error('Error fetching yearly transactions:', txError)
+    }
+
+    // Fetch all paystubs for the year
+    const { data: paystubs, error: payError } = await supabase
+      .from('paystubs')
+      .select('net_pay, pay_date')
+      .gte('pay_date', startOfYear)
+      .lte('pay_date', endOfYear)
+
+    if (payError) {
+      console.error('Error fetching yearly paystubs:', payError)
+    }
+
+    // Fetch current budget (used for all months)
+    const { data: budgets, error: budgetError } = await supabase
+      .from('budgets')
+      .select('monthly_limit')
+      .eq('is_active', true)
+
+    if (budgetError) {
+      console.error('Error fetching budgets:', budgetError)
+    }
+
+    const monthlyBudget = budgets?.reduce((sum, b) => sum + Number(b.monthly_limit), 0) || 0
+
+    // Group transactions by month
+    const spentByMonth: Record<number, number> = {}
+    transactions?.forEach((t) => {
+      const month = new Date(t.date).getMonth()
+      spentByMonth[month] = (spentByMonth[month] || 0) + Math.abs(Number(t.amount))
+    })
+
+    // Group income by month
+    const incomeByMonth: Record<number, number> = {}
+    paystubs?.forEach((p) => {
+      const month = new Date(p.pay_date).getMonth()
+      incomeByMonth[month] = (incomeByMonth[month] || 0) + Number(p.net_pay)
+    })
+
+    // Build chart data for all 12 months
+    const now = new Date()
+    const isCurrentYear = chartYear === now.getFullYear()
+    const currentMonthIndex = now.getMonth()
+
+    const chartData: YearlyChartData[] = MONTH_NAMES.map((name, index) => {
+      // For past years, show budget for all months
+      // For current year, only show budget up to current month
+      const showBudget = !isCurrentYear || index <= currentMonthIndex
+      return {
+        month: name,
+        monthIndex: index,
+        spent: Math.round(spentByMonth[index] || 0),
+        budget: showBudget ? monthlyBudget : 0,
+        income: Math.round(incomeByMonth[index] || 0),
+      }
+    })
+
+    setYearlyChartData(chartData)
+  }, [chartYear])
+
+  // Fetch data when selected month changes
+  useEffect(() => {
+    fetchTotalSpent()
+    fetchExpectedIncome()
+    fetchTotalBudget()
+  }, [fetchTotalSpent, fetchExpectedIncome, fetchTotalBudget, selectedMonth])
+
+  // Fetch chart data when chart year changes
+  useEffect(() => {
+    fetchYearlyData()
+  }, [fetchYearlyData])
+
+  const budgetTracking = useMemo(() => {
+    const expectedSpending = (totalBudget * monthData.daysElapsed) / monthData.daysInMonth
+    const difference = totalSpent - expectedSpending
+    const percentageOfBudget = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0
+    const remainingIncome = expectedIncome - totalSpent
+    const percentageOfIncome = expectedIncome > 0 ? (totalSpent / expectedIncome) * 100 : 0
+
+    let status: 'under' | 'on-track' | 'over'
+    let statusColor: string
+    let statusText: string
+
+    if (difference < -totalBudget * 0.1) {
+      status = 'under'
+      statusColor = '#10B981'
+      statusText = 'Under budget'
+    } else if (difference > totalBudget * 0.1) {
+      status = 'over'
+      statusColor = '#FF6B6B'
+      statusText = 'Over budget'
+    } else {
+      status = 'on-track'
+      statusColor = '#F59E0B'
+      statusText = 'On track'
+    }
+
+    return {
+      totalBudget,
+      expectedSpending,
+      difference,
+      remainingIncome,
+      percentageOfIncome,
+      percentageOfBudget,
+      status,
+      statusColor,
+      statusText,
+    }
+  }, [totalBudget, totalSpent, expectedIncome, monthData])
+
+  // Custom tooltip for the chart
+  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white rounded-xl p-3 shadow-lg border border-[#1F1410]/5">
+          <p className="text-sm font-bold text-[#1F1410] mb-2">{label}</p>
+          {payload.map((entry, index) => (
+            <p key={index} className="text-xs" style={{ color: entry.color }}>
+              {entry.name}: ${entry.value.toLocaleString()}
+            </p>
+          ))}
+        </div>
+      )
+    }
+    return null
   }
 
   return (
@@ -107,7 +313,17 @@ export function DashboardView() {
             </motion.div>
             <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Dashboard</h1>
           </div>
-          <p className="text-[#1F1410]/60 text-lg">Your financial overview for {new Date().getFullYear()}</p>
+          <p className="text-[#1F1410]/60 text-lg">Your financial overview</p>
+        </motion.div>
+
+        {/* Month Selector */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.3 }}
+          className="flex justify-center mb-6"
+        >
+          <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
         </motion.div>
 
         {/* Key Metrics Grid */}
@@ -173,7 +389,7 @@ export function DashboardView() {
               <Calendar className="w-4 h-4 text-[#F59E0B]" />
             </div>
             <p className="text-3xl font-bold text-[#1F1410] mb-1">{monthData.daysRemaining}</p>
-            <p className="text-xs text-[#1F1410]/40">In January</p>
+            <p className="text-xs text-[#1F1410]/40">In {monthData.monthName}</p>
           </motion.div>
         </div>
 
@@ -247,94 +463,120 @@ export function DashboardView() {
           </div>
         </motion.div>
 
-        {/* Monthly Budget Status */}
+        {/* Yearly Chart */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1, duration: 0.4 }}
-          className="mb-8"
+          className="bg-white rounded-2xl p-6 shadow-sm mb-8"
+          style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
         >
-          <h2 className="text-xl font-bold text-[#1F1410] mb-4">2024 Monthly Overview</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {monthlyStatus.map((month, index) => {
-              const StatusIcon = getStatusIcon(month.status)
-              const statusColor = getStatusColor(month.status)
-              const isPending = month.status === 'pending'
-              return (
-                <motion.div
-                  key={month.month}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 1.1 + index * 0.05, duration: 0.3 }}
-                  className="bg-white rounded-xl p-4 shadow-sm"
-                  style={{
-                    boxShadow: '0 2px 8px rgba(31, 20, 16, 0.04)',
-                    opacity: isPending ? 0.5 : 1,
-                  }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-bold text-[#1F1410]">{month.month}</span>
-                    <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: `${statusColor}20` }}
-                    >
-                      <StatusIcon className="w-3.5 h-3.5" style={{ color: statusColor }} />
-                    </div>
-                  </div>
-                  {!isPending ? (
-                    <>
-                      <p className="text-lg font-bold mb-1" style={{ color: statusColor }}>
-                        {month.difference > 0 ? '+' : ''}${Math.abs(month.difference).toFixed(0)}
-                      </p>
-                      <p className="text-xs text-[#1F1410]/40">
-                        {month.status === 'under' ? 'Under' : month.status === 'over' ? 'Over' : 'On track'}
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-lg font-bold text-[#1F1410]/30 mb-1">--</p>
-                      <p className="text-xs text-[#1F1410]/30">Pending</p>
-                    </>
-                  )}
-                </motion.div>
-              )
-            })}
+          <div className="flex items-start justify-between mb-6">
+            <div>
+              <h2 className="text-xl font-bold text-[#1F1410] mb-1">Yearly Overview</h2>
+              <p className="text-sm text-[#1F1410]/50">Budget vs actual spending and income trend</p>
+            </div>
+
+            {/* Year Selector */}
+            <div className="flex items-center gap-1 bg-[#1F1410]/5 rounded-lg p-1">
+              <button
+                onClick={() => setChartYear(y => Math.max(availableYears[0], y - 1))}
+                disabled={chartYear <= availableYears[0]}
+                className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4 text-[#1F1410]/60" />
+              </button>
+              <div className="flex gap-1">
+                {availableYears.map((year) => (
+                  <button
+                    key={year}
+                    onClick={() => setChartYear(year)}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                      chartYear === year
+                        ? 'bg-white text-[#1F1410] shadow-sm'
+                        : 'text-[#1F1410]/50 hover:text-[#1F1410]/70'
+                    }`}
+                  >
+                    {year}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setChartYear(y => Math.min(availableYears[availableYears.length - 1], y + 1))}
+                disabled={chartYear >= availableYears[availableYears.length - 1]}
+                className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4 text-[#1F1410]/60" />
+              </button>
+            </div>
+          </div>
+
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={yearlyChartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(31, 20, 16, 0.08)" />
+                <XAxis
+                  dataKey="month"
+                  tick={{ fill: 'rgba(31, 20, 16, 0.5)', fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={{ stroke: 'rgba(31, 20, 16, 0.1)' }}
+                />
+                <YAxis
+                  tick={{ fill: 'rgba(31, 20, 16, 0.5)', fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={{ stroke: 'rgba(31, 20, 16, 0.1)' }}
+                  tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend
+                  wrapperStyle={{ paddingTop: '20px' }}
+                  iconType="circle"
+                  formatter={(value) => <span className="text-xs text-[#1F1410]/70">{value}</span>}
+                />
+                <Bar
+                  dataKey="budget"
+                  name="Budget"
+                  fill="rgba(31, 20, 16, 0.1)"
+                  radius={[4, 4, 0, 0]}
+                  barSize={24}
+                />
+                <Bar
+                  dataKey="spent"
+                  name="Actual Spent"
+                  fill="#F59E0B"
+                  radius={[4, 4, 0, 0]}
+                  barSize={24}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="income"
+                  name="Income"
+                  stroke="#10B981"
+                  strokeWidth={3}
+                  dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6, strokeWidth: 0 }}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Legend Summary */}
+          <div className="flex flex-wrap gap-6 mt-4 pt-4 border-t border-[#1F1410]/5">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-[#1F1410]/10" />
+              <span className="text-xs text-[#1F1410]/60">Budget (Monthly Target)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-[#F59E0B]" />
+              <span className="text-xs text-[#1F1410]/60">Actual Spending</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-[#10B981]" />
+              <span className="text-xs text-[#1F1410]/60">Income Trend</span>
+            </div>
           </div>
         </motion.div>
 
-        {/* Quick Stats */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.8, duration: 0.4 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-4"
-        >
-          <div
-            className="bg-white rounded-xl p-5 shadow-sm"
-            style={{ boxShadow: '0 2px 8px rgba(31, 20, 16, 0.04)' }}
-          >
-            <p className="text-xs font-semibold text-[#1F1410]/40 uppercase tracking-wide mb-2">Daily Average</p>
-            <p className="text-2xl font-bold text-[#1F1410]">${(totalSpent / monthData.daysElapsed).toFixed(2)}</p>
-          </div>
-          <div
-            className="bg-white rounded-xl p-5 shadow-sm"
-            style={{ boxShadow: '0 2px 8px rgba(31, 20, 16, 0.04)' }}
-          >
-            <p className="text-xs font-semibold text-[#1F1410]/40 uppercase tracking-wide mb-2">Projected Total</p>
-            <p className="text-2xl font-bold text-[#1F1410]">
-              ${((totalSpent / monthData.daysElapsed) * monthData.daysInMonth).toFixed(0)}
-            </p>
-          </div>
-          <div
-            className="bg-white rounded-xl p-5 shadow-sm"
-            style={{ boxShadow: '0 2px 8px rgba(31, 20, 16, 0.04)' }}
-          >
-            <p className="text-xs font-semibold text-[#1F1410]/40 uppercase tracking-wide mb-2">Savings Rate</p>
-            <p className="text-2xl font-bold text-[#10B981]">
-              {Math.round(((expectedIncome - totalSpent) / expectedIncome) * 100)}%
-            </p>
-          </div>
-        </motion.div>
       </div>
     </div>
   )

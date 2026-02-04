@@ -1,6 +1,4 @@
-import React from 'react'
 import { motion } from 'framer-motion'
-import { CategoryDropdown, Category } from './CategoryDropdown'
 import { CreditCard, LucideIcon } from 'lucide-react'
 
 type TransactionItemProps = {
@@ -13,13 +11,10 @@ type TransactionItemProps = {
   color: string
   source: string
   index: number
-  categories: Category[]
-  onCategoryChange: (transactionId: string, category: Category) => void
-  onCreateCategory: (category: Category) => void
+  onClick: () => void
 }
 
 export function TransactionItem({
-  id,
   icon: Icon,
   merchant,
   category,
@@ -28,25 +23,15 @@ export function TransactionItem({
   color,
   source,
   index,
-  categories,
-  onCategoryChange,
-  onCreateCategory,
+  onClick,
 }: TransactionItemProps) {
-  const handleSelect = (selectedCategory: Category) => {
-    onCategoryChange(id, selectedCategory)
-  }
-
-  const handleCreateNew = (newCategory: Category) => {
-    onCreateCategory(newCategory)
-    onCategoryChange(id, newCategory)
-  }
-
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.05, duration: 0.3, ease: 'easeOut' }}
-      className="flex items-center gap-4 p-4 rounded-xl"
+      onClick={onClick}
+      className="flex items-center gap-4 p-4 rounded-xl cursor-pointer hover:bg-[#1F1410]/[0.02] transition-colors"
     >
       <motion.div
         className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
@@ -58,13 +43,7 @@ export function TransactionItem({
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-[#1F1410] truncate">{merchant}</p>
         <div className="flex items-center gap-1.5 text-sm text-[#1F1410]/50">
-          <CategoryDropdown
-            currentCategory={category}
-            currentColor={color}
-            categories={categories}
-            onSelect={handleSelect}
-            onCreateNew={handleCreateNew}
-          />
+          <span style={{ color }}>{category}</span>
           <span>•</span>
           <span>{date}</span>
           <span>•</span>
