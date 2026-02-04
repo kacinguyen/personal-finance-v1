@@ -1,8 +1,9 @@
-import React from 'react'
 import { motion } from 'framer-motion'
 import { User, Mail, Bell, Lock, CreditCard, Globe, Moon, Shield, LogOut } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useUser } from '../hooks/useUser'
+import { TAB_COLORS } from '../lib/colors'
+import { SHADOWS } from '../lib/styles'
 
 export function ProfileView() {
   const { signOut } = useAuth()
@@ -52,10 +53,13 @@ export function ProfileView() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.4 }}
           className="bg-white rounded-2xl p-8 shadow-sm mb-6"
-          style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+          style={{ boxShadow: SHADOWS.card }}
         >
           <div className="flex items-center gap-6 mb-6">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#A855F7] to-[#EC4899] flex items-center justify-center">
+            <div
+              className="w-24 h-24 rounded-full flex items-center justify-center"
+              style={{ background: `linear-gradient(to bottom right, ${TAB_COLORS.profile}, #EC4899)` }}
+            >
               <span className="text-3xl font-bold text-white">{getInitials(email)}</span>
             </div>
             <div>

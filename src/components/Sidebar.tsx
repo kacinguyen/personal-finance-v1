@@ -1,4 +1,3 @@
-import React from 'react'
 import { motion } from 'framer-motion'
 import {
   LayoutDashboard,
@@ -6,9 +5,10 @@ import {
   Receipt,
   PiggyBank,
   Target,
-  User,
 } from 'lucide-react'
 import { useUser } from '../hooks/useUser'
+import { TAB_COLORS } from '../lib/colors'
+import { SHADOWS } from '../lib/styles'
 
 type Tab = 'dashboard' | 'income' | 'expenses' | 'savings' | 'budget' | 'profile'
 
@@ -22,31 +22,31 @@ const tabs = [
     id: 'dashboard' as Tab,
     label: 'Dashboard',
     icon: LayoutDashboard,
-    color: '#F59E0B',
+    color: TAB_COLORS.dashboard,
   },
   {
     id: 'income' as Tab,
     label: 'Income',
     icon: TrendingUp,
-    color: '#10B981',
+    color: TAB_COLORS.income,
   },
   {
     id: 'expenses' as Tab,
     label: 'Expenses',
     icon: Receipt,
-    color: '#FF6B6B',
+    color: TAB_COLORS.expenses,
   },
   {
     id: 'savings' as Tab,
     label: 'Savings',
     icon: PiggyBank,
-    color: '#38BDF8',
+    color: TAB_COLORS.savings,
   },
   {
     id: 'budget' as Tab,
     label: 'Budget',
     icon: Target,
-    color: '#6366F1',
+    color: TAB_COLORS.budget,
   },
 ]
 
@@ -79,7 +79,7 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
       }}
       className="fixed left-0 top-0 h-screen w-64 bg-white border-r border-[#1F1410]/10 p-6 hidden lg:flex lg:flex-col"
       style={{
-        boxShadow: '2px 0 12px rgba(31, 20, 16, 0.04)',
+        boxShadow: SHADOWS.sidebar,
       }}
     >
       {/* Logo/Header */}
@@ -155,29 +155,26 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
       <div>
         <button
           onClick={() => onTabChange('profile')}
-          className={`w-full p-3 rounded-xl transition-all flex items-center gap-3 ${activeTab === 'profile' ? 'bg-[#A855F7]/10' : 'hover:bg-[#1F1410]/5'}`}
+          className={`w-full p-3 rounded-xl transition-all flex items-center gap-3 ${activeTab === 'profile' ? `bg-[${TAB_COLORS.profile}]/10` : 'hover:bg-[#1F1410]/5'}`}
+          style={activeTab === 'profile' ? { backgroundColor: `${TAB_COLORS.profile}10` } : undefined}
         >
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#A855F7] to-[#EC4899] flex items-center justify-center flex-shrink-0">
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: `linear-gradient(to bottom right, ${TAB_COLORS.profile}, #EC4899)` }}
+          >
             <span className="text-sm font-bold text-white">{getInitials(email)}</span>
           </div>
           <div className="flex-1 text-left min-w-0">
             <p
               className="text-sm font-semibold truncate"
               style={{
-                color: activeTab === 'profile' ? '#A855F7' : '#1F1410',
+                color: activeTab === 'profile' ? TAB_COLORS.profile : '#1F1410',
               }}
             >
               {email || 'User'}
             </p>
             <p className="text-xs text-[#1F1410]/50 truncate">View profile</p>
           </div>
-          <User
-            className="w-4 h-4 flex-shrink-0"
-            style={{
-              color:
-                activeTab === 'profile' ? '#A855F7' : 'rgba(31, 20, 16, 0.4)',
-            }}
-          />
         </button>
       </div>
     </motion.div>

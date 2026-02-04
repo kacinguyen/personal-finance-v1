@@ -45,11 +45,12 @@ export function PaystubReviewModal({
   isOpen,
   onClose,
   parsedData,
-  validation,
+  validation: _validation,
   fileName,
   pdfFile,
   onSaveSuccess,
 }: PaystubReviewModalProps) {
+  // _validation available for future use (e.g., showing field warnings)
   const { userId } = useUser()
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)

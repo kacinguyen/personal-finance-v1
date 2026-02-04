@@ -383,7 +383,6 @@ function SavingsGoalRow({
   onBudgetChange: (id: string, value: string) => void
 }) {
   const Icon = goal.icon
-  const remaining = goal.targetAmount - goal.currentAmount
 
   return (
     <motion.div

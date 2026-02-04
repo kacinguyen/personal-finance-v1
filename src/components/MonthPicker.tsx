@@ -1,77 +1,14 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { formatMonth, isSameMonth } from '../lib/dateUtils'
+
+// Re-export date utilities for backwards compatibility
+export { getMonthRange, getMonthData, formatMonth, isSameMonth } from '../lib/dateUtils'
 
 type MonthPickerProps = {
   selectedMonth: Date
   onMonthChange: (month: Date) => void
   className?: string
-}
-
-/**
- * Get the start and end dates for a given month
- */
-export function getMonthRange(month: Date): { startOfMonth: string; endOfMonth: string } {
-  const year = month.getFullYear()
-  const monthIndex = month.getMonth()
-  const startOfMonth = new Date(year, monthIndex, 1).toISOString().split('T')[0]
-  const endOfMonth = new Date(year, monthIndex + 1, 0).toISOString().split('T')[0]
-  return { startOfMonth, endOfMonth }
-}
-
-/**
- * Get month metadata (days in month, days elapsed, days remaining)
- */
-export function getMonthData(month: Date): {
-  daysInMonth: number
-  daysElapsed: number
-  daysRemaining: number
-  monthName: string
-  isCurrentMonth: boolean
-} {
-  const now = new Date()
-  const year = month.getFullYear()
-  const monthIndex = month.getMonth()
-  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
-  const monthName = month.toLocaleDateString('en-US', { month: 'long' })
-
-  const isCurrentMonth =
-    now.getFullYear() === year && now.getMonth() === monthIndex
-
-  // For current month, use actual elapsed days
-  // For past months, all days are elapsed
-  // For future months, no days are elapsed
-  let daysElapsed: number
-  if (isCurrentMonth) {
-    daysElapsed = now.getDate()
-  } else if (month < now) {
-    daysElapsed = daysInMonth
-  } else {
-    daysElapsed = 0
-  }
-
-  const daysRemaining = daysInMonth - daysElapsed
-
-  return { daysInMonth, daysElapsed, daysRemaining, monthName, isCurrentMonth }
-}
-
-/**
- * Format a month for display
- */
-export function formatMonth(date: Date): string {
-  return date.toLocaleDateString('en-US', {
-    month: 'long',
-    year: 'numeric',
-  })
-}
-
-/**
- * Check if a date is in the same month as another date
- */
-export function isSameMonth(date1: Date, date2: Date): boolean {
-  return (
-    date1.getFullYear() === date2.getFullYear() &&
-    date1.getMonth() === date2.getMonth()
-  )
 }
 
 export function MonthPicker({ selectedMonth, onMonthChange, className = '' }: MonthPickerProps) {

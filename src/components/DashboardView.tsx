@@ -23,7 +23,12 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { supabase } from '../lib/supabase'
-import { MonthPicker, getMonthRange, getMonthData } from './MonthPicker'
+import { formatCurrency, formatPercent } from '../lib/format'
+import { STATUS_COLORS, CHART_COLORS, TAB_COLORS } from '../lib/colors'
+import { SHADOWS } from '../lib/styles'
+import { getMonthRange, getMonthData } from '../lib/dateUtils'
+import { useExpectedIncome } from '../hooks/useExpectedIncome'
+import { MonthPicker } from './MonthPicker'
 
 type YearlyChartData = {
   month: string
@@ -37,7 +42,6 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 
 export function DashboardView() {
   const [totalSpent, setTotalSpent] = useState(0)
-  const [expectedIncome, setExpectedIncome] = useState(0)
   const [totalBudget, setTotalBudget] = useState(0)
   const [yearlyChartData, setYearlyChartData] = useState<YearlyChartData[]>([])
   const [chartYear, setChartYear] = useState(() => new Date().getFullYear())
@@ -46,14 +50,15 @@ export function DashboardView() {
     return new Date(now.getFullYear(), now.getMonth(), 1)
   })
 
+  // Use shared hook for expected income
+  const { expectedIncome } = useExpectedIncome(selectedMonth)
+
   // Available years for the chart (current year and 2 previous)
   const currentYear = new Date().getFullYear()
   const availableYears = [currentYear - 2, currentYear - 1, currentYear]
 
   // Calculate month data based on selected month
-  const monthData = useMemo(() => {
-    return getMonthData(selectedMonth)
-  }, [selectedMonth])
+  const monthData = useMemo(() => getMonthData(selectedMonth), [selectedMonth])
 
   // Fetch total spent from transactions for selected month
   const fetchTotalSpent = useCallback(async () => {
@@ -70,69 +75,6 @@ export function DashboardView() {
     } else if (data) {
       const total = data.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
       setTotalSpent(total)
-    }
-  }, [selectedMonth])
-
-  // Fetch expected income from paystubs for selected month
-  // Smart logic: use selected month if available, otherwise use most recent month's data
-  const fetchExpectedIncome = useCallback(async () => {
-    const { startOfMonth, endOfMonth } = getMonthRange(selectedMonth)
-
-    // First try to get paystubs for the selected month
-    const { data: selectedMonthData, error: selectedError } = await supabase
-      .from('paystubs')
-      .select('net_pay, pay_date')
-      .gte('pay_date', startOfMonth)
-      .lte('pay_date', endOfMonth)
-
-    if (selectedError) {
-      console.error('Error fetching paystubs:', selectedError)
-      return
-    }
-
-    if (selectedMonthData && selectedMonthData.length > 0) {
-      const total = selectedMonthData.reduce((sum, p) => sum + Number(p.net_pay), 0)
-      setExpectedIncome(total)
-      return
-    }
-
-    // No data for selected month - fetch recent data to use as estimate
-    const sixMonthsAgo = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 6, 1).toISOString().split('T')[0]
-
-    const { data, error } = await supabase
-      .from('paystubs')
-      .select('net_pay, pay_date')
-      .gte('pay_date', sixMonthsAgo)
-      .order('pay_date', { ascending: false })
-
-    if (error) {
-      console.error('Error fetching paystubs:', error)
-      return
-    }
-
-    if (!data || data.length === 0) {
-      setExpectedIncome(0)
-      return
-    }
-
-    // Group paystubs by month and use most recent
-    const paysByMonth: Record<string, number> = {}
-    data.forEach((p) => {
-      const payDate = new Date(p.pay_date)
-      const monthKey = `${payDate.getFullYear()}-${payDate.getMonth()}`
-      paysByMonth[monthKey] = (paysByMonth[monthKey] || 0) + Number(p.net_pay)
-    })
-
-    const sortedMonths = Object.keys(paysByMonth).sort((a, b) => {
-      const [yearA, monthA] = a.split('-').map(Number)
-      const [yearB, monthB] = b.split('-').map(Number)
-      return yearB - yearA || monthB - monthA
-    })
-
-    if (sortedMonths.length > 0) {
-      setExpectedIncome(paysByMonth[sortedMonths[0]])
-    } else {
-      setExpectedIncome(0)
     }
   }, [selectedMonth])
 
@@ -228,9 +170,8 @@ export function DashboardView() {
   // Fetch data when selected month changes
   useEffect(() => {
     fetchTotalSpent()
-    fetchExpectedIncome()
     fetchTotalBudget()
-  }, [fetchTotalSpent, fetchExpectedIncome, fetchTotalBudget, selectedMonth])
+  }, [fetchTotalSpent, fetchTotalBudget, selectedMonth])
 
   // Fetch chart data when chart year changes
   useEffect(() => {
@@ -250,15 +191,15 @@ export function DashboardView() {
 
     if (difference < -totalBudget * 0.1) {
       status = 'under'
-      statusColor = '#10B981'
+      statusColor = STATUS_COLORS.success
       statusText = 'Under budget'
     } else if (difference > totalBudget * 0.1) {
       status = 'over'
-      statusColor = '#FF6B6B'
+      statusColor = STATUS_COLORS.error
       statusText = 'Over budget'
     } else {
       status = 'on-track'
-      statusColor = '#F59E0B'
+      statusColor = STATUS_COLORS.warning
       statusText = 'On track'
     }
 
@@ -283,7 +224,7 @@ export function DashboardView() {
           <p className="text-sm font-bold text-[#1F1410] mb-2">{label}</p>
           {payload.map((entry, index) => (
             <p key={index} className="text-xs" style={{ color: entry.color }}>
-              {entry.name}: ${entry.value.toLocaleString()}
+              {entry.name}: {formatCurrency(entry.value)}
             </p>
           ))}
         </div>
@@ -291,6 +232,8 @@ export function DashboardView() {
     }
     return null
   }
+
+  const cardStyle = { boxShadow: SHADOWS.card }
 
   return (
     <div className="min-h-screen w-full bg-[#FFFBF5] py-8 px-4 sm:px-6 lg:px-8">
@@ -309,7 +252,7 @@ export function DashboardView() {
               transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
               className="w-12 h-12 rounded-xl bg-[#F59E0B]/10 flex items-center justify-center"
             >
-              <LayoutDashboard className="w-6 h-6 text-[#F59E0B]" />
+              <LayoutDashboard className="w-6 h-6" style={{ color: TAB_COLORS.dashboard }} />
             </motion.div>
             <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Dashboard</h1>
           </div>
@@ -334,14 +277,14 @@ export function DashboardView() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 0.4 }}
             className="bg-white rounded-2xl p-6 shadow-sm"
-            style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+            style={cardStyle}
           >
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-medium text-[#1F1410]/50">Total Spent</p>
-              <ArrowUpRight className="w-4 h-4 text-[#FF6B6B]" />
+              <ArrowUpRight className="w-4 h-4" style={{ color: STATUS_COLORS.error }} />
             </div>
-            <p className="text-3xl font-bold text-[#1F1410] mb-1">${totalSpent.toLocaleString()}</p>
-            <p className="text-xs text-[#1F1410]/40">{Math.round(budgetTracking.percentageOfBudget)}% of budget</p>
+            <p className="text-3xl font-bold text-[#1F1410] mb-1">{formatCurrency(totalSpent)}</p>
+            <p className="text-xs text-[#1F1410]/40">{formatPercent(budgetTracking.percentageOfBudget)} of budget</p>
           </motion.div>
 
           {/* Expected Income */}
@@ -350,13 +293,13 @@ export function DashboardView() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.4 }}
             className="bg-white rounded-2xl p-6 shadow-sm"
-            style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+            style={cardStyle}
           >
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-medium text-[#1F1410]/50">Expected Income</p>
-              <ArrowDownRight className="w-4 h-4 text-[#10B981]" />
+              <ArrowDownRight className="w-4 h-4" style={{ color: STATUS_COLORS.success }} />
             </div>
-            <p className="text-3xl font-bold text-[#1F1410] mb-1">${expectedIncome.toLocaleString()}</p>
+            <p className="text-3xl font-bold text-[#1F1410] mb-1">{formatCurrency(expectedIncome)}</p>
             <p className="text-xs text-[#1F1410]/40">This month</p>
           </motion.div>
 
@@ -366,13 +309,15 @@ export function DashboardView() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4, duration: 0.4 }}
             className="bg-white rounded-2xl p-6 shadow-sm"
-            style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+            style={cardStyle}
           >
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-medium text-[#1F1410]/50">Remaining</p>
-              <Wallet className="w-4 h-4 text-[#10B981]" />
+              <Wallet className="w-4 h-4" style={{ color: STATUS_COLORS.success }} />
             </div>
-            <p className="text-3xl font-bold text-[#10B981] mb-1">${budgetTracking.remainingIncome.toLocaleString()}</p>
+            <p className="text-3xl font-bold mb-1" style={{ color: STATUS_COLORS.success }}>
+              {formatCurrency(budgetTracking.remainingIncome)}
+            </p>
             <p className="text-xs text-[#1F1410]/40">From income</p>
           </motion.div>
 
@@ -382,11 +327,11 @@ export function DashboardView() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5, duration: 0.4 }}
             className="bg-white rounded-2xl p-6 shadow-sm"
-            style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+            style={cardStyle}
           >
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-medium text-[#1F1410]/50">Days Left</p>
-              <Calendar className="w-4 h-4 text-[#F59E0B]" />
+              <Calendar className="w-4 h-4" style={{ color: STATUS_COLORS.warning }} />
             </div>
             <p className="text-3xl font-bold text-[#1F1410] mb-1">{monthData.daysRemaining}</p>
             <p className="text-xs text-[#1F1410]/40">In {monthData.monthName}</p>
@@ -399,7 +344,7 @@ export function DashboardView() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6, duration: 0.4 }}
           className="bg-white rounded-2xl p-8 shadow-sm mb-8"
-          style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+          style={cardStyle}
         >
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -430,7 +375,7 @@ export function DashboardView() {
               <div className="flex justify-between text-sm text-[#1F1410]/60 mb-2">
                 <span>Spent vs Budget</span>
                 <span className="font-semibold text-[#1F1410]">
-                  ${totalSpent.toLocaleString()} / ${totalBudget.toLocaleString()}
+                  {formatCurrency(totalSpent)} / {formatCurrency(totalBudget)}
                 </span>
               </div>
               <div className="h-3 bg-[#1F1410]/5 rounded-full overflow-hidden">
@@ -448,7 +393,7 @@ export function DashboardView() {
               <div className="flex justify-between text-sm text-[#1F1410]/60 mb-2">
                 <span>Spent vs Income</span>
                 <span className="font-semibold text-[#1F1410]">
-                  {Math.round(budgetTracking.percentageOfIncome)}% used
+                  {formatPercent(budgetTracking.percentageOfIncome)} used
                 </span>
               </div>
               <div className="h-3 bg-[#1F1410]/5 rounded-full overflow-hidden">
@@ -456,7 +401,8 @@ export function DashboardView() {
                   initial={{ width: 0 }}
                   animate={{ width: `${Math.min(budgetTracking.percentageOfIncome, 100)}%` }}
                   transition={{ duration: 1, delay: 0.9, ease: 'easeOut' }}
-                  className="h-full rounded-full bg-[#10B981]"
+                  className="h-full rounded-full"
+                  style={{ backgroundColor: STATUS_COLORS.success }}
                 />
               </div>
             </div>
@@ -469,7 +415,7 @@ export function DashboardView() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1, duration: 0.4 }}
           className="bg-white rounded-2xl p-6 shadow-sm mb-8"
-          style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+          style={cardStyle}
         >
           <div className="flex items-start justify-between mb-6">
             <div>
@@ -536,14 +482,14 @@ export function DashboardView() {
                 <Bar
                   dataKey="budget"
                   name="Budget"
-                  fill="rgba(31, 20, 16, 0.1)"
+                  fill={CHART_COLORS.budget}
                   radius={[4, 4, 0, 0]}
                   barSize={24}
                 />
                 <Bar
                   dataKey="spent"
                   name="Actual Spent"
-                  fill="#F59E0B"
+                  fill={CHART_COLORS.spent}
                   radius={[4, 4, 0, 0]}
                   barSize={24}
                 />
@@ -551,9 +497,9 @@ export function DashboardView() {
                   type="monotone"
                   dataKey="income"
                   name="Income"
-                  stroke="#10B981"
+                  stroke={CHART_COLORS.income}
                   strokeWidth={3}
-                  dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }}
+                  dot={{ fill: CHART_COLORS.income, strokeWidth: 2, r: 4 }}
                   activeDot={{ r: 6, strokeWidth: 0 }}
                 />
               </ComposedChart>
@@ -567,11 +513,11 @@ export function DashboardView() {
               <span className="text-xs text-[#1F1410]/60">Budget (Monthly Target)</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#F59E0B]" />
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS.spent }} />
               <span className="text-xs text-[#1F1410]/60">Actual Spending</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#10B981]" />
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS.income }} />
               <span className="text-xs text-[#1F1410]/60">Income Trend</span>
             </div>
           </div>
