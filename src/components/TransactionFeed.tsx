@@ -61,7 +61,7 @@ export function TransactionFeed() {
   const ITEMS_PER_PAGE = 20
 
   const { userId } = useUser()
-  const { categories: dbCategories, createCategory, findCategoryByName } = useCategories()
+  const { categories: dbCategories, createCategory, findCategoryByName, refetch: refetchCategories } = useCategories()
   const [transactions, setTransactions] = useState<UITransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [expectedIncome, setExpectedIncome] = useState(0)
@@ -159,6 +159,11 @@ export function TransactionFeed() {
       setBudgets(budgetMap)
     }
   }, [])
+
+  // Refetch categories on mount to sync with any changes made on other pages (e.g., Budget)
+  useEffect(() => {
+    refetchCategories()
+  }, [refetchCategories])
 
   // Load transactions, expected income, and budgets on mount or when categories change
   useEffect(() => {
