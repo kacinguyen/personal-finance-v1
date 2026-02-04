@@ -9,9 +9,11 @@ export type PaymentChannel = 'online' | 'in store' | 'other'
 
 export type Transaction = {
   id: string
+  user_id?: string
   date: string // ISO date string (YYYY-MM-DD)
   merchant: string
   category: string | null
+  category_id: string | null // FK to categories table
   amount: number // Negative for expenses, positive for income
   tags: string | null // Comma-separated (e.g., "groceries,weekly")
   notes: string | null
@@ -50,6 +52,7 @@ export type CSVTransactionRow = {
   date: string
   merchant: string
   category?: string
+  category_id?: string
   amount: number | string
   tags?: string
   notes?: string
@@ -77,6 +80,7 @@ export const csvRowToTransaction = (row: CSVTransactionRow): TransactionInsert =
   date: row.date,
   merchant: row.merchant,
   category: row.category || null,
+  category_id: row.category_id || null,
   amount: typeof row.amount === 'string' ? parseFloat(row.amount) : row.amount,
   tags: row.tags || null,
   notes: row.notes || null,
@@ -112,6 +116,7 @@ export const plaidToTransaction = (
   date: plaidTx.date,
   merchant: plaidTx.merchant_name || plaidTx.name,
   category: plaidTx.category?.[0] || null,
+  category_id: null, // Will be resolved after import based on category name
   amount: -plaidTx.amount, // Plaid: positive = debit; we want negative = expense
   tags: null,
   notes: null,

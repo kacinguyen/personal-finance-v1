@@ -1,73 +1,43 @@
-import React, { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  ChevronDown,
-  Plus,
-  Check,
-  Utensils,
-  ShoppingBag,
-  Car,
-  Clapperboard,
-  Receipt,
-  Heart,
-  Home,
-  Plane,
-  Gift,
-  Coffee,
-  Gamepad2,
-  Music,
-  Book,
-  Dumbbell,
-  Pill,
-  LucideIcon,
-} from 'lucide-react'
+import { ChevronDown, Plus, Check, LucideIcon } from 'lucide-react'
+import { availableIcons, availableColors, getIcon } from '../lib/iconMap'
+import type { Category as DBCategory } from '../types/category'
 
-export type Category = {
+/**
+ * UI Category type used by components
+ * Has resolved icon component instead of icon name string
+ */
+export type UICategory = {
+  id: string
   icon: LucideIcon
   name: string
-  total: number
-  budget: number
   color: string
+  category_type?: string
+  parent_id?: string | null
+}
+
+/**
+ * Convert database category to UI category
+ */
+export function dbCategoryToUI(category: DBCategory): UICategory {
+  return {
+    id: category.id,
+    icon: getIcon(category.icon),
+    name: category.name,
+    color: category.color,
+    category_type: category.category_type,
+    parent_id: category.parent_id,
+  }
 }
 
 type CategoryDropdownProps = {
   currentCategory: string
   currentColor: string
-  categories: Category[]
-  onSelect: (category: Category) => void
-  onCreateNew: (category: Category) => void
+  categories: UICategory[]
+  onSelect: (category: UICategory) => void
+  onCreateNew: (data: { name: string; icon: string; color: string }) => void
 }
-
-const availableIcons: { icon: LucideIcon; name: string }[] = [
-  { icon: Utensils, name: 'Utensils' },
-  { icon: ShoppingBag, name: 'ShoppingBag' },
-  { icon: Car, name: 'Car' },
-  { icon: Clapperboard, name: 'Clapperboard' },
-  { icon: Receipt, name: 'Receipt' },
-  { icon: Heart, name: 'Heart' },
-  { icon: Home, name: 'Home' },
-  { icon: Plane, name: 'Plane' },
-  { icon: Gift, name: 'Gift' },
-  { icon: Coffee, name: 'Coffee' },
-  { icon: Gamepad2, name: 'Gamepad2' },
-  { icon: Music, name: 'Music' },
-  { icon: Book, name: 'Book' },
-  { icon: Dumbbell, name: 'Dumbbell' },
-  { icon: Pill, name: 'Pill' },
-]
-
-const availableColors = [
-  '#FF6B6B',
-  '#A855F7',
-  '#38BDF8',
-  '#EC4899',
-  '#F59E0B',
-  '#10B981',
-  '#6366F1',
-  '#F97316',
-  '#14B8A6',
-  '#8B5CF6',
-]
 
 export function CategoryDropdown({
   currentCategory,
@@ -102,21 +72,18 @@ export function CategoryDropdown({
     }
   }, [isCreating])
 
-  const handleSelect = (category: Category) => {
+  const handleSelect = (category: UICategory) => {
     onSelect(category)
     setIsOpen(false)
   }
 
   const handleCreateNew = () => {
     if (newName.trim()) {
-      const newCategory: Category = {
-        icon: selectedIcon.icon,
+      onCreateNew({
         name: newName.trim(),
-        total: 0,
-        budget: 0,
+        icon: selectedIcon.name,
         color: selectedColor,
-      }
-      onCreateNew(newCategory)
+      })
       setIsOpen(false)
       setIsCreating(false)
       setNewName('')
@@ -165,7 +132,7 @@ export function CategoryDropdown({
                     const isSelected = category.name === currentCategory
                     return (
                       <motion.button
-                        key={category.name}
+                        key={category.id || category.name}
                         initial={{ opacity: 0, x: -8 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.03, duration: 0.15 }}
@@ -242,7 +209,7 @@ export function CategoryDropdown({
                   Icon
                 </p>
                 <div className="grid grid-cols-5 gap-1.5">
-                  {availableIcons.map(({ icon: Icon, name }) => (
+                  {availableIcons.slice(0, 15).map(({ icon: Icon, name }) => (
                     <button
                       key={name}
                       onClick={() => setSelectedIcon({ icon: Icon, name })}

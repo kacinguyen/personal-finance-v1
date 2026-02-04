@@ -8,6 +8,7 @@ import {
   Target,
   User,
 } from 'lucide-react'
+import { useUser } from '../hooks/useUser'
 
 type Tab = 'dashboard' | 'income' | 'expenses' | 'savings' | 'budget' | 'profile'
 
@@ -50,7 +51,18 @@ const tabs = [
 ]
 
 export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
+  const { email } = useUser()
   const activeIndex = tabs.findIndex((tab) => tab.id === activeTab)
+
+  // Get initials from email
+  const getInitials = (email: string | null) => {
+    if (!email) return '?'
+    const parts = email.split('@')[0].split(/[._-]/)
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase()
+    }
+    return email.slice(0, 2).toUpperCase()
+  }
 
   return (
     <motion.div
@@ -146,7 +158,7 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
           className={`w-full p-3 rounded-xl transition-all flex items-center gap-3 ${activeTab === 'profile' ? 'bg-[#A855F7]/10' : 'hover:bg-[#1F1410]/5'}`}
         >
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#A855F7] to-[#EC4899] flex items-center justify-center flex-shrink-0">
-            <span className="text-sm font-bold text-white">JD</span>
+            <span className="text-sm font-bold text-white">{getInitials(email)}</span>
           </div>
           <div className="flex-1 text-left min-w-0">
             <p
@@ -155,7 +167,7 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
                 color: activeTab === 'profile' ? '#A855F7' : '#1F1410',
               }}
             >
-              John Doe
+              {email || 'User'}
             </p>
             <p className="text-xs text-[#1F1410]/50 truncate">View profile</p>
           </div>

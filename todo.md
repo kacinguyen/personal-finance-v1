@@ -11,7 +11,7 @@
     - plaid_account_id (for future Plaid linking)
 - [x] Create `budgets` table (monthly_limit, budget_type: need/want, flexibility: fixed/variable, icon, color)
 - [x] Connect BudgetView to database (fetch, update, create categories)
-- [ ] Create `goals` table (target_amount, current_amount, deadline)
+- [X] Create `goals` table (target_amount, current_amount, deadline)
 
 ## Phase 2: Sample Data & Page Scaffolding
 - [x] Build CSV file upload for Bank transactions
@@ -38,9 +38,20 @@
     - [x] Create/edit categories with monthly limits
     - [x] Category icons and color picker
     - [x] Needs vs Wants separation with visual breakdown
+- [ ] **CSV Import Verification**:
+    - [ ] Build CSV preview modal before import
+    - [ ] Show transaction count and date range summary
+    - [ ] Display category mapping preview (merchant → category)
+    - [ ] Allow bulk category assignment for unmapped merchants
+    - [ ] Highlight unrecognized/new categories
+    - [ ] Option to create new categories during import
+    - [ ] Show duplicate detection (transactions already imported)
+    - [ ] Confirm/cancel import after review
 - [ ] **Transaction-to-Category Mapping**:
     - [ ] Build mapping engine for merchants to categories
     - [ ] Create "Rules" UI (e.g., "Always map 'Uber' to 'Transport'")
+    - [ ] Save merchant-to-category mappings for future imports
+    - [ ] Auto-apply saved mappings during CSV preview
 - [x] **Expense Dashboard**:
     - [x] Aggregate transactions by category for current month
     - [x] Budget progress bars per category (e.g., $400 / $500 spent)
@@ -51,6 +62,12 @@
 ## Phase 5: Savings Page
 - [ ] Display account balances from `accounts` table
 - [ ] Track progress toward each goal
+- [ ] **Goal Management**:
+    - [ ] Edit active goals (name, target amount, deadline, icon, color)
+    - [ ] Delete/archive completed or cancelled goals
+    - [ ] Pause/resume goal contributions
+    - [ ] Reorder goals by priority
+    - [ ] Add manual contributions to goals
 
 ## Phase 6: Cross-Page Data Flow
 - [x] Sync expected income across Income, Budget, and Expenses pages (from paystubs)
@@ -63,7 +80,56 @@
     4. ESPP if discount >10% with immediate sell
     5. RSU diversification (sell-to-cover)
 
-## Phase 7: Live Automation (Plaid)
+## Phase 7: Authentication & User Management
+- [x] Add user_id columns and RLS policies to all tables
+- [x] Create AuthContext and useUser hook
+- [x] Build sign-in/sign-up UI (AuthView)
+- [x] Add ProtectedRoute wrapper
+- [x] Update all data operations to include user_id
+- [ ] **Email Verification**:
+    - [ ] Enable email confirmation in Supabase Dashboard
+    - [ ] Create email verification pending screen
+    - [ ] Handle "Email not confirmed" error state gracefully
+    - [ ] Add "Resend verification email" button
+    - [ ] Redirect to app after email confirmation
+- [ ] **Password Management**:
+    - [ ] Add "Forgot password" flow
+    - [ ] Create password reset email template
+    - [ ] Build password reset form
+- [ ] **Session Management**:
+    - [ ] Handle session expiration gracefully
+    - [ ] Add "Remember me" option
+    - [ ] Implement secure logout (clear all session data)
+
+## Phase 8: Insights & Dashboard
+- [x] Connect dashboard metrics to live data (total spent, expected income, days left)
+- [ ] **Budget Status Card**:
+    - [ ] Calculate actual budget status from transactions vs budgets
+    - [ ] Show spending pace indicator (ahead/behind expected)
+    - [ ] Add trend arrow comparing to previous month
+- [ ] **Monthly Overview Grid**:
+    - [ ] Populate monthly cards with actual spending data per month
+    - [ ] Color-code months by budget status (under/over/on-track)
+    - [ ] Show year-to-date totals
+- [ ] **Quick Stats Cards**:
+    - [ ] Daily average spending (actual calculation)
+    - [ ] Projected month-end total based on spending pace
+    - [ ] Savings rate (income - expenses / income)
+- [ ] **Spending Insights**:
+    - [ ] Top spending categories this month
+    - [ ] Biggest transactions this month
+    - [ ] Category spending vs last month comparison
+    - [ ] Unusual spending alerts (e.g., "Dining 40% higher than usual")
+- [ ] **Income Insights**:
+    - [ ] Income trends over time
+    - [ ] Paycheck-to-paycheck breakdown
+    - [ ] Tax withholding summary
+- [ ] **Goal Progress Cards**:
+    - [ ] Show active savings goals on dashboard
+    - [ ] Progress bars with projected completion dates
+    - [ ] Contribution suggestions based on remaining budget
+
+## Phase 9: Live Automation (Plaid)
 - [ ] Link bank accounts via Plaid Transactions API
 - [ ] Sync investment account balances (401k/Brokerage)
 - [ ] Replace CSV import with live transaction sync

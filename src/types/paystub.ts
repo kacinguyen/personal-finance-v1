@@ -1,5 +1,6 @@
 export interface Paystub {
   id: string
+  user_id?: string
   pay_date: string
   pay_period_start: string | null
   pay_period_end: string | null

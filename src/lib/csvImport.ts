@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import type { TransactionInsert, CSVTransactionRow } from '../types/transaction'
+import type { Category } from '../types/category'
 
 /**
  * Parse CSV text into rows
@@ -93,23 +94,107 @@ function parseCSVLine(line: string): string[] {
 /**
  * Convert parsed CSV rows to transaction inserts
  */
-function csvRowsToTransactions(rows: CSVTransactionRow[]): TransactionInsert[] {
-  return rows.map((row) => ({
-    date: normalizeDate(row.date),
-    merchant: row.merchant,
-    category: row.category || null,
-    amount: typeof row.amount === 'string' ? parseFloat(row.amount) : row.amount,
-    tags: row.tags || null,
-    notes: row.notes || null,
-    plaid_transaction_id: null,
-    plaid_account_id: null,
-    plaid_category: null,
-    plaid_category_id: null,
-    pending: false,
-    payment_channel: null,
-    source: 'csv_import' as const,
-    source_name: null,
+function csvRowsToTransactions(
+  rows: CSVTransactionRow[],
+  userId: string,
+  categoryMap: Map<string, string>
+): TransactionInsert[] {
+  return rows.map((row) => {
+    const categoryName = row.category || null
+    const categoryId = categoryName ? categoryMap.get(categoryName.toLowerCase()) || null : null
+
+    return {
+      user_id: userId,
+      date: normalizeDate(row.date),
+      merchant: row.merchant,
+      category: categoryName,
+      category_id: categoryId,
+      amount: typeof row.amount === 'string' ? parseFloat(row.amount) : row.amount,
+      tags: row.tags || null,
+      notes: row.notes || null,
+      plaid_transaction_id: null,
+      plaid_account_id: null,
+      plaid_category: null,
+      plaid_category_id: null,
+      pending: false,
+      payment_channel: null,
+      source: 'csv_import' as const,
+      source_name: null,
+    }
+  })
+}
+
+/**
+ * Fetch user's categories and create a lookup map
+ */
+async function fetchCategoryMap(userId: string): Promise<Map<string, string>> {
+  const { data, error } = await supabase
+    .from('categories')
+    .select('id, normalized_name')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+
+  if (error) {
+    console.error('Error fetching categories:', error)
+    return new Map()
+  }
+
+  const map = new Map<string, string>()
+  for (const cat of (data as Pick<Category, 'id' | 'normalized_name'>[])) {
+    map.set(cat.normalized_name, cat.id)
+  }
+  return map
+}
+
+/**
+ * Create categories for unknown category names in CSV
+ */
+async function createMissingCategories(
+  rows: CSVTransactionRow[],
+  userId: string,
+  existingMap: Map<string, string>
+): Promise<Map<string, string>> {
+  // Find unique categories not in existing map
+  const uniqueCategories = new Set<string>()
+  for (const row of rows) {
+    if (row.category && !existingMap.has(row.category.toLowerCase())) {
+      uniqueCategories.add(row.category)
+    }
+  }
+
+  if (uniqueCategories.size === 0) {
+    return existingMap
+  }
+
+  // Create new categories
+  const newCategories = Array.from(uniqueCategories).map(name => ({
+    user_id: userId,
+    name,
+    normalized_name: name.toLowerCase(),
+    icon: 'CircleDollarSign',
+    color: '#6B7280',
+    category_type: 'want' as const,
+    is_system: false,
+    is_active: true,
   }))
+
+  const { data, error } = await supabase
+    .from('categories')
+    .insert(newCategories)
+    .select('id, normalized_name')
+
+  if (error) {
+    console.error('Error creating categories:', error)
+    return existingMap
+  }
+
+  // Merge new categories into map
+  const updatedMap = new Map(existingMap)
+  for (const cat of (data as Pick<Category, 'id' | 'normalized_name'>[])) {
+    updatedMap.set(cat.normalized_name, cat.id)
+  }
+
+  return updatedMap
 }
 
 /**
@@ -145,7 +230,7 @@ function normalizeDate(dateStr: string): string {
  * Import CSV file contents to Supabase
  * Returns the number of transactions imported
  */
-export async function importCSVToSupabase(file: File): Promise<number> {
+export async function importCSVToSupabase(file: File, userId: string): Promise<number> {
   const text = await file.text()
   const rows = parseCSV(text)
 
@@ -153,7 +238,14 @@ export async function importCSVToSupabase(file: File): Promise<number> {
     throw new Error('No valid transactions found in CSV')
   }
 
-  const transactions = csvRowsToTransactions(rows)
+  // Fetch existing categories
+  let categoryMap = await fetchCategoryMap(userId)
+
+  // Create any missing categories from the CSV
+  categoryMap = await createMissingCategories(rows, userId, categoryMap)
+
+  // Convert rows to transactions with category_id
+  const transactions = csvRowsToTransactions(rows, userId, categoryMap)
 
   const { data, error } = await supabase
     .from('transactions')
@@ -170,11 +262,11 @@ export async function importCSVToSupabase(file: File): Promise<number> {
 /**
  * Import multiple CSV files
  */
-export async function importCSVFiles(files: File[]): Promise<number> {
+export async function importCSVFiles(files: File[], userId: string): Promise<number> {
   let total = 0
 
   for (const file of files) {
-    const count = await importCSVToSupabase(file)
+    const count = await importCSVToSupabase(file, userId)
     total += count
   }
 

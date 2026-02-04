@@ -22,7 +22,6 @@ import {
 } from 'lucide-react'
 import { GoalCustomizationModal } from './GoalCustomizationModal'
 import { GoalContributionHistory } from './GoalContributionHistory'
-import { MonthPicker } from './MonthPicker'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -122,12 +121,6 @@ export function SavingsView() {
   const [editingGoal, setEditingGoal] = useState<ActiveGoal | null>(null)
   const [deletingGoalId, setDeletingGoalId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-
-  // Month selection state
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), 1)
-  })
 
   // Fetch goals from database
   const fetchGoals = useCallback(async () => {
@@ -293,7 +286,6 @@ export function SavingsView() {
               </motion.div>
               <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Savings</h1>
             </div>
-            <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </div>
           <p className="text-[#1F1410]/60 text-lg">Track your progress and create new savings goals</p>
         </motion.div>
@@ -412,7 +404,7 @@ export function SavingsView() {
                     </div>
 
                     {/* Contribution History */}
-                    <GoalContributionHistory goalId={goal.id} goalColor={goal.color} selectedMonth={selectedMonth} />
+                    <GoalContributionHistory goalId={goal.id} goalColor={goal.color} />
                   </div>
                 )
               })}

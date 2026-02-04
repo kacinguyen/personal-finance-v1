@@ -6,6 +6,7 @@ import { IncomeView } from './components/IncomeView'
 import { SavingsView } from './components/SavingsView'
 import { ProfileView } from './components/ProfileView'
 import { BudgetView } from './components/BudgetView'
+import { ProtectedRoute } from './components/ProtectedRoute'
 
 type Tab = 'dashboard' | 'income' | 'expenses' | 'savings' | 'budget' | 'profile'
 
@@ -32,9 +33,11 @@ export function App() {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#FFFBF5]">
-      <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
-      <main className="flex-1 lg:pl-64">{renderView()}</main>
-    </div>
+    <ProtectedRoute>
+      <div className="flex min-h-screen bg-[#FFFBF5]">
+        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+        <main className="flex-1 lg:pl-64">{renderView()}</main>
+      </div>
+    </ProtectedRoute>
   )
 }

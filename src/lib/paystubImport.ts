@@ -3,12 +3,23 @@
  *
  * Orchestrates the full flow of PDF upload, text extraction, parsing, validation,
  * and database insertion for paystub data.
+ *
+ * Also handles auto-contributions to goals linked to paystub fields.
  */
 
 import { supabase } from './supabase'
 import { extractTextFromPDF, isPDFFile, validatePDFSize } from './pdfExtractor'
 import { parseADPPaystub, type ParsedPaystub, type ParsedField } from './adpPaystubParser'
 import type { PaystubInsert } from '../types/paystub'
+
+// Mapping of goal contribution_field values to paystub field names
+const CONTRIBUTION_FIELD_MAP: Record<string, keyof PaystubInsert> = {
+  traditional_401k: 'traditional_401k',
+  espp_contribution: 'espp_contribution',
+  hsa_contribution: 'hsa_contribution',
+  roth_401k: 'roth_401k',
+  after_tax_401k: 'after_tax_401k',
+}
 
 export interface ImportResult {
   success: boolean
@@ -241,14 +252,101 @@ export function parsedToInsert(
 }
 
 /**
+ * Process auto-contributions for goals linked to paystub fields
+ *
+ * After a paystub is saved, this function:
+ * 1. Queries goals where auto_contribute=true
+ * 2. Matches contribution_field to paystub fields
+ * 3. Creates goal_contribution records with source='paystub'
+ * 4. Skips if contribution already exists for this paystub (prevents duplicates)
+ */
+export async function processAutoContributions(
+  paystubId: string,
+  paystubData: PaystubInsert,
+  userId: string
+): Promise<{ contributionsCreated: number; errors: string[] }> {
+  const errors: string[] = []
+  let contributionsCreated = 0
+
+  // Fetch goals with auto_contribute enabled for this user
+  const { data: goals, error: goalsError } = await supabase
+    .from('goals')
+    .select('id, name, contribution_field')
+    .eq('user_id', userId)
+    .eq('auto_contribute', true)
+    .eq('is_active', true)
+    .not('contribution_field', 'is', null)
+
+  if (goalsError) {
+    errors.push(`Failed to fetch goals: ${goalsError.message}`)
+    return { contributionsCreated, errors }
+  }
+
+  if (!goals || goals.length === 0) {
+    return { contributionsCreated, errors }
+  }
+
+  // Check for existing contributions from this paystub to prevent duplicates
+  const { data: existingContributions } = await supabase
+    .from('goal_contributions')
+    .select('goal_id')
+    .eq('paystub_id', paystubId)
+
+  const existingGoalIds = new Set(existingContributions?.map((c) => c.goal_id) || [])
+
+  // Process each goal
+  for (const goal of goals) {
+    // Skip if contribution already exists for this paystub+goal combo
+    if (existingGoalIds.has(goal.id)) {
+      console.info(`Skipping duplicate contribution for goal ${goal.name} from paystub ${paystubId}`)
+      continue
+    }
+
+    // Get the paystub field name from the mapping
+    const paystubField = CONTRIBUTION_FIELD_MAP[goal.contribution_field]
+    if (!paystubField) {
+      errors.push(`Unknown contribution field '${goal.contribution_field}' for goal '${goal.name}'`)
+      continue
+    }
+
+    // Get the contribution amount from the paystub
+    const amount = paystubData[paystubField]
+    if (typeof amount !== 'number' || amount <= 0) {
+      // No contribution for this field in this paystub - skip silently
+      continue
+    }
+
+    // Create the goal contribution
+    const { error: insertError } = await supabase.from('goal_contributions').insert({
+      goal_id: goal.id,
+      amount,
+      contribution_date: paystubData.pay_date,
+      source: 'paystub',
+      paystub_id: paystubId,
+      notes: `Auto-contribution from paycheck (${paystubData.source_file_name || 'manual entry'})`,
+    })
+
+    if (insertError) {
+      errors.push(`Failed to create contribution for goal '${goal.name}': ${insertError.message}`)
+    } else {
+      contributionsCreated++
+      console.info(`Created auto-contribution of $${amount} for goal '${goal.name}'`)
+    }
+  }
+
+  return { contributionsCreated, errors }
+}
+
+/**
  * Save a paystub to the database
  */
 export async function savePaystub(
-  data: PaystubInsert
-): Promise<{ success: boolean; id?: string; error?: string }> {
+  data: PaystubInsert,
+  userId: string
+): Promise<{ success: boolean; id?: string; error?: string; autoContributions?: number }> {
   const { data: inserted, error } = await supabase
     .from('paystubs')
-    .insert(data)
+    .insert({ ...data, user_id: userId })
     .select('id')
     .single()
 
@@ -259,8 +357,21 @@ export async function savePaystub(
     }
   }
 
+  // Process auto-contributions after successful paystub save
+  const { contributionsCreated, errors: contributionErrors } = await processAutoContributions(
+    inserted.id,
+    data,
+    userId
+  )
+
+  // Log any contribution errors but don't fail the overall save
+  if (contributionErrors.length > 0) {
+    console.warn('Auto-contribution errors:', contributionErrors)
+  }
+
   return {
     success: true,
     id: inserted.id,
+    autoContributions: contributionsCreated,
   }
 }

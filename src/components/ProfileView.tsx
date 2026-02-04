@@ -1,10 +1,25 @@
 import React from 'react'
 import { motion } from 'framer-motion'
 import { User, Mail, Bell, Lock, CreditCard, Globe, Moon, Shield, LogOut } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
+import { useUser } from '../hooks/useUser'
 
 export function ProfileView() {
-  const handleSignOut = () => {
-    console.log('Sign out clicked')
+  const { signOut } = useAuth()
+  const { email } = useUser()
+
+  // Get initials from email
+  const getInitials = (email: string | null) => {
+    if (!email) return '?'
+    const parts = email.split('@')[0].split(/[._-]/)
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase()
+    }
+    return email.slice(0, 2).toUpperCase()
+  }
+
+  const handleSignOut = async () => {
+    await signOut()
   }
 
   return (
@@ -41,11 +56,11 @@ export function ProfileView() {
         >
           <div className="flex items-center gap-6 mb-6">
             <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#A855F7] to-[#EC4899] flex items-center justify-center">
-              <span className="text-3xl font-bold text-white">JD</span>
+              <span className="text-3xl font-bold text-white">{getInitials(email)}</span>
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-[#1F1410] mb-1">John Doe</h2>
-              <p className="text-[#1F1410]/60">john.doe@example.com</p>
+              <h2 className="text-2xl font-bold text-[#1F1410] mb-1">{email || 'User'}</h2>
+              <p className="text-[#1F1410]/60">Logged in</p>
             </div>
           </div>
 
@@ -55,14 +70,14 @@ export function ProfileView() {
                 <Mail className="w-5 h-5 text-[#1F1410]/60" />
                 <span className="text-sm font-semibold text-[#1F1410]/70">Email</span>
               </div>
-              <p className="text-[#1F1410]">john.doe@example.com</p>
+              <p className="text-[#1F1410]">{email || 'Not available'}</p>
             </div>
             <div className="p-4 rounded-xl bg-[#1F1410]/5">
               <div className="flex items-center gap-3 mb-2">
                 <User className="w-5 h-5 text-[#1F1410]/60" />
-                <span className="text-sm font-semibold text-[#1F1410]/70">Member Since</span>
+                <span className="text-sm font-semibold text-[#1F1410]/70">Account Status</span>
               </div>
-              <p className="text-[#1F1410]">January 2024</p>
+              <p className="text-[#1F1410]">Active</p>
             </div>
           </div>
         </motion.div>
