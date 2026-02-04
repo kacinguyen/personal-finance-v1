@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
   TrendingUp,
@@ -13,19 +13,35 @@ import {
   AlertCircle,
   CheckCircle,
   Upload,
+  Gift,
+  Sparkles,
 } from 'lucide-react'
 import { processPaystubPDF, type ImportResult } from '../lib/paystubImport'
 import { isPDFFile } from '../lib/pdfExtractor'
 import { PaystubReviewModal } from './PaystubReviewModal'
 import { supabase } from '../lib/supabase'
+import { useCategories } from '../hooks/useCategories'
+import { getIcon } from '../lib/iconMap'
 
 type PaystubRecord = {
   id: string
   pay_date: string
   net_pay: number
   gross_pay: number
+  bonus_pay: number | null
+  dividend_equivalent: number | null
   employer_name: string | null
   source_file_name: string | null
+}
+
+type WindfallItem = {
+  id: string
+  name: string
+  amount: number
+  date: string
+  categoryName: string
+  icon: LucideIcon
+  color: string
 }
 
 type IncomeSource = {
@@ -43,6 +59,7 @@ type ConnectedBank = {
 
 export function IncomeView() {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { windfallIncomeCategories } = useCategories()
 
   // PDF import state
   const [isProcessingPDF, setIsProcessingPDF] = useState(false)
@@ -57,6 +74,10 @@ export function IncomeView() {
   const [paystubs, setPaystubs] = useState<PaystubRecord[]>([])
   const [loadingPaystubs, setLoadingPaystubs] = useState(true)
 
+  // Windfall transactions from database
+  const [windfallTransactions, setWindfallTransactions] = useState<WindfallItem[]>([])
+  const [loadingWindfall, setLoadingWindfall] = useState(true)
+
   const connectedBanks: ConnectedBank[] = [
     { name: 'Chase Checking', lastSync: '2 hours ago', accountType: 'Checking' },
     { name: 'Wells Fargo Savings', lastSync: '1 day ago', accountType: 'Savings' },
@@ -67,7 +88,7 @@ export function IncomeView() {
     setLoadingPaystubs(true)
     const { data, error } = await supabase
       .from('paystubs')
-      .select('id, pay_date, net_pay, gross_pay, employer_name, source_file_name')
+      .select('id, pay_date, net_pay, gross_pay, bonus_pay, dividend_equivalent, employer_name, source_file_name')
       .order('pay_date', { ascending: false })
 
     if (error) {
@@ -78,10 +99,52 @@ export function IncomeView() {
     setLoadingPaystubs(false)
   }, [])
 
+  // Fetch windfall transactions from database (income-categorized transactions that are windfall)
+  const fetchWindfallTransactions = useCallback(async () => {
+    if (windfallIncomeCategories.length === 0) {
+      setLoadingWindfall(false)
+      return
+    }
+
+    setLoadingWindfall(true)
+    const categoryIds = windfallIncomeCategories.map(c => c.id)
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('id, description, amount, date, category_id')
+      .in('category_id', categoryIds)
+      .order('date', { ascending: false })
+      .limit(50)
+
+    if (error) {
+      console.error('Error fetching windfall transactions:', error)
+    } else if (data) {
+      const items: WindfallItem[] = data.map(t => {
+        const category = windfallIncomeCategories.find(c => c.id === t.category_id)
+        return {
+          id: t.id,
+          name: t.description || category?.name || 'Windfall',
+          amount: Math.abs(Number(t.amount)),
+          date: t.date,
+          categoryName: category?.name || 'Other',
+          icon: category ? getIcon(category.icon) : Gift,
+          color: category?.color || '#F59E0B',
+        }
+      })
+      setWindfallTransactions(items)
+    }
+    setLoadingWindfall(false)
+  }, [windfallIncomeCategories])
+
   // Fetch on mount
   useEffect(() => {
     fetchPaystubs()
   }, [fetchPaystubs])
+
+  // Fetch windfall transactions when categories are loaded
+  useEffect(() => {
+    fetchWindfallTransactions()
+  }, [fetchWindfallTransactions])
 
   // Calculate income from paystubs
   // Smart logic: use current month if available, otherwise use most recent month's data
@@ -130,6 +193,78 @@ export function IncomeView() {
   const incomeSources: IncomeSource[] = salaryIncome > 0
     ? [{ name: 'Salary', amount: salaryIncome, icon: Briefcase, color: '#10B981' }]
     : []
+
+  // Extract windfall items from paystubs (bonus_pay, dividend_equivalent)
+  const paystubWindfalls = useMemo<WindfallItem[]>(() => {
+    const items: WindfallItem[] = []
+    const bonusCategory = windfallIncomeCategories.find(c => c.normalized_name === 'bonus')
+    const rsuCategory = windfallIncomeCategories.find(c => c.normalized_name === 'rsu vest')
+
+    displayPaystubs.forEach(p => {
+      const payDate = new Date(p.pay_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+
+      if (p.bonus_pay && Number(p.bonus_pay) > 0) {
+        items.push({
+          id: `${p.id}-bonus`,
+          name: `Bonus (${payDate})`,
+          amount: Number(p.bonus_pay),
+          date: p.pay_date,
+          categoryName: 'Bonus',
+          icon: bonusCategory ? getIcon(bonusCategory.icon) : Gift,
+          color: bonusCategory?.color || '#F59E0B',
+        })
+      }
+
+      if (p.dividend_equivalent && Number(p.dividend_equivalent) > 0) {
+        items.push({
+          id: `${p.id}-rsu`,
+          name: `RSU Dividend (${payDate})`,
+          amount: Number(p.dividend_equivalent),
+          date: p.pay_date,
+          categoryName: 'RSU Vest',
+          icon: rsuCategory ? getIcon(rsuCategory.icon) : TrendingUp,
+          color: rsuCategory?.color || '#8B5CF6',
+        })
+      }
+    })
+
+    return items
+  }, [displayPaystubs, windfallIncomeCategories])
+
+  // Combine paystub windfall with transaction windfall
+  const allWindfallItems = useMemo(() => {
+    const currentMonth = now.getMonth()
+    const currentYear = now.getFullYear()
+
+    // Filter transactions to current month
+    const currentMonthTransactions = windfallTransactions.filter(t => {
+      const date = new Date(t.date)
+      return date.getMonth() === currentMonth && date.getFullYear() === currentYear
+    })
+
+    // Combine and sort by date descending
+    return [...paystubWindfalls, ...currentMonthTransactions].sort((a, b) =>
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    )
+  }, [paystubWindfalls, windfallTransactions, now])
+
+  // Calculate total windfall for current month
+  const totalWindfall = useMemo(() =>
+    allWindfallItems.reduce((sum, item) => sum + item.amount, 0),
+    [allWindfallItems]
+  )
+
+  // Group windfall by category for summary
+  const windfallByCategory = useMemo(() => {
+    const grouped: Record<string, { total: number; icon: LucideIcon; color: string }> = {}
+    allWindfallItems.forEach(item => {
+      if (!grouped[item.categoryName]) {
+        grouped[item.categoryName] = { total: 0, icon: item.icon, color: item.color }
+      }
+      grouped[item.categoryName].total += item.amount
+    })
+    return grouped
+  }, [allWindfallItems])
 
   const totalExpectedIncome = incomeSources.reduce((sum, source) => sum + source.amount, 0)
 
@@ -341,6 +476,118 @@ export function IncomeView() {
                   </motion.div>
                 )
               })
+            )}
+          </div>
+        </motion.div>
+
+        {/* Windfall & Wealth Events */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5, duration: 0.4 }}
+          className="bg-white rounded-2xl p-8 shadow-sm mb-6"
+          style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+        >
+          <div className="flex items-start justify-between mb-6">
+            <div>
+              <p className="text-sm font-medium text-[#1F1410]/50 mb-2">Windfall & Wealth Events</p>
+              <div className="flex items-baseline gap-3">
+                <motion.p
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.6, type: 'spring', stiffness: 200, damping: 15 }}
+                  className="text-4xl font-bold text-[#8B5CF6]"
+                >
+                  ${totalWindfall.toLocaleString()}
+                </motion.p>
+                <span className="text-xs text-[#1F1410]/40">this month</span>
+              </div>
+              <p className="text-xs text-[#1F1410]/40 mt-2">
+                Bonuses, RSU vests, reimbursements, interest, and ESPP gains
+              </p>
+            </div>
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.7, type: 'spring', stiffness: 200, damping: 15 }}
+              className="w-16 h-16 rounded-xl bg-[#8B5CF6]/10 flex items-center justify-center"
+            >
+              <Sparkles className="w-8 h-8 text-[#8B5CF6]" />
+            </motion.div>
+          </div>
+
+          {/* Windfall by Category Summary */}
+          {Object.keys(windfallByCategory).length > 0 && (
+            <div className="flex flex-wrap gap-3 mb-4 pb-4 border-b border-[#1F1410]/5">
+              {Object.entries(windfallByCategory).map(([category, data]) => {
+                const IconComponent = data.icon
+                return (
+                  <div
+                    key={category}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-full"
+                    style={{ backgroundColor: `${data.color}10` }}
+                  >
+                    <IconComponent className="w-4 h-4" style={{ color: data.color }} />
+                    <span className="text-xs font-medium text-[#1F1410]">{category}</span>
+                    <span className="text-xs font-bold" style={{ color: data.color }}>
+                      ${data.total.toLocaleString()}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Windfall Items List */}
+          <div className="space-y-3">
+            {loadingWindfall || loadingPaystubs ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-5 h-5 text-[#8B5CF6] animate-spin" />
+              </div>
+            ) : allWindfallItems.length === 0 ? (
+              <p className="text-sm text-[#1F1410]/40 py-4 text-center">
+                No windfall income this month
+              </p>
+            ) : (
+              allWindfallItems.slice(0, 5).map((item, index) => {
+                const IconComponent = item.icon
+                const itemDate = new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                return (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.7 + index * 0.1, duration: 0.3 }}
+                    className="flex items-center gap-4"
+                  >
+                    <div
+                      className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: `${item.color}15` }}
+                    >
+                      <IconComponent className="w-5 h-5" style={{ color: item.color }} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-[#1F1410]">{item.name}</span>
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#1F1410]/5 text-[#1F1410]/50">
+                            {item.categoryName}
+                          </span>
+                        </div>
+                        <span className="text-sm font-bold" style={{ color: item.color }}>
+                          +${item.amount.toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[#1F1410]/40">{itemDate}</p>
+                    </div>
+                  </motion.div>
+                )
+              })
+            )}
+            {allWindfallItems.length > 5 && (
+              <p className="text-xs text-center text-[#1F1410]/40 pt-2">
+                +{allWindfallItems.length - 5} more windfall items
+              </p>
             )}
           </div>
         </motion.div>

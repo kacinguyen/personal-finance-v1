@@ -16,6 +16,7 @@ export type Category = {
   parent_id: string | null
   is_system: boolean
   is_active: boolean
+  is_budgetable: boolean
   created_at: string
   updated_at: string
 }
@@ -23,10 +24,11 @@ export type Category = {
 /**
  * Input type for creating a new category (omits auto-generated fields)
  */
-export type CategoryInsert = Omit<Category, 'id' | 'created_at' | 'updated_at' | 'normalized_name' | 'parent_id'> & {
+export type CategoryInsert = Omit<Category, 'id' | 'created_at' | 'updated_at' | 'normalized_name' | 'parent_id' | 'is_budgetable'> & {
   id?: string
   normalized_name?: string
   parent_id?: string | null
+  is_budgetable?: boolean
   created_at?: string
   updated_at?: string
 }
@@ -149,6 +151,62 @@ export const DEFAULT_CATEGORIES: DefaultCategoryDef[] = [
     category_type: 'want',
     is_system: true,
     is_active: true,
+  },
+  // Income (Budgetable)
+  {
+    name: 'Salary',
+    icon: 'Wallet',
+    color: '#10B981',
+    category_type: 'income',
+    is_system: true,
+    is_active: true,
+    is_budgetable: true,
+  },
+  // Income (Windfall)
+  {
+    name: 'Bonus',
+    icon: 'Gift',
+    color: '#F59E0B',
+    category_type: 'income',
+    is_system: true,
+    is_active: true,
+    is_budgetable: false,
+  },
+  {
+    name: 'RSU Vest',
+    icon: 'TrendingUp',
+    color: '#8B5CF6',
+    category_type: 'income',
+    is_system: true,
+    is_active: true,
+    is_budgetable: false,
+  },
+  {
+    name: 'Reimbursements',
+    icon: 'Receipt',
+    color: '#14B8A6',
+    category_type: 'income',
+    is_system: true,
+    is_active: true,
+    is_budgetable: false,
+  },
+  {
+    name: 'Interest',
+    icon: 'Percent',
+    color: '#10B981',
+    category_type: 'income',
+    is_system: true,
+    is_active: true,
+    is_budgetable: false,
+  },
+  {
+    name: 'ESPP',
+    icon: 'Building2',
+    color: '#6366F1',
+    category_type: 'income',
+    is_system: true,
+    is_active: true,
+    is_budgetable: false,
   },
 ]
 
