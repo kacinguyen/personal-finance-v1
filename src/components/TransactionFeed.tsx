@@ -1,12 +1,6 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import {
-  Utensils,
-  ShoppingBag,
-  Car,
-  Clapperboard,
-  Receipt,
-  Heart,
   Sparkles,
   TrendingDown,
   TrendingUp,
@@ -14,70 +8,31 @@ import {
   Wallet,
   LucideIcon,
   CircleDollarSign,
-  Home,
-  Dumbbell,
-  Plane,
-  Scissors,
-  ShoppingCart,
-  CreditCard,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
-import { CategoryCard } from './CategoryCard'
+import { CategoryProgressList } from './CategoryProgressList'
 import { TransactionItem } from './TransactionItem'
-import { Category } from './CategoryDropdown'
+import { UICategory, dbCategoryToUI } from './CategoryDropdown'
 import { CsvDropzone } from './CsvDropzone'
 import { importCSVFiles } from '../lib/csvImport'
 import { supabase } from '../lib/supabase'
+import { getIcon, DEFAULT_COLOR } from '../lib/iconMap'
+import { useCategories } from '../hooks/useCategories'
 import type { Transaction as DBTransaction } from '../types/transaction'
+import { useUser } from '../hooks/useUser'
 
 type UITransaction = {
   id: string
   icon: LucideIcon
   merchant: string
   category: string
+  category_id: string | null
   date: string
   amount: number
   color: string
   source: string
 }
-
-// Icon map for converting database icon names to Lucide components
-const iconMap: Record<string, LucideIcon> = {
-  Home,
-  ShoppingCart,
-  Utensils,
-  Car,
-  Plane,
-  ShoppingBag,
-  Dumbbell,
-  Scissors,
-  Clapperboard,
-  CreditCard,
-  Receipt,
-  Heart,
-  CircleDollarSign,
-}
-
-// Map category names to icons and colors (case-insensitive lookup)
-const categoryConfig: Record<string, { icon: LucideIcon; color: string }> = {
-  'rent': { icon: Home, color: '#6366F1' },
-  'groceries': { icon: ShoppingCart, color: '#10B981' },
-  'dining out': { icon: Utensils, color: '#FF6B6B' },
-  'transportation': { icon: Car, color: '#38BDF8' },
-  'travel': { icon: Plane, color: '#F59E0B' },
-  'shopping - general': { icon: ShoppingBag, color: '#A855F7' },
-  'fitness': { icon: Dumbbell, color: '#EF4444' },
-  'self care': { icon: Scissors, color: '#EC4899' },
-  'entertainment': { icon: Clapperboard, color: '#8B5CF6' },
-  'subscriptions': { icon: CreditCard, color: '#14B8A6' },
-  // Legacy mappings
-  'food': { icon: Utensils, color: '#FF6B6B' },
-  'shopping': { icon: ShoppingBag, color: '#A855F7' },
-  'transport': { icon: Car, color: '#38BDF8' },
-  'bills': { icon: Receipt, color: '#F59E0B' },
-  'health': { icon: Heart, color: '#10B981' },
-}
-
-const defaultCategoryConfig = { icon: CircleDollarSign, color: '#6B7280' }
 
 /**
  * Format date for display (Today, Yesterday, or MMM DD)
@@ -102,57 +57,46 @@ function formatDisplayDate(dateStr: string): string {
   }
 }
 
-/**
- * Map database transaction to UI transaction format
- */
-function mapDBToUI(tx: DBTransaction): UITransaction {
-  const categoryKey = (tx.category || '').toLowerCase()
-  const config = categoryConfig[categoryKey] || defaultCategoryConfig
-
-  return {
-    id: tx.id,
-    icon: config.icon,
-    merchant: tx.merchant,
-    category: tx.category || 'Uncategorized',
-    date: formatDisplayDate(tx.date),
-    amount: Math.abs(tx.amount), // UI shows positive amounts
-    color: config.color,
-    source: tx.source_name || tx.source,
-  }
-}
-
 export function TransactionFeed() {
-  const [categories, setCategories] = useState<Category[]>([])
+  const ITEMS_PER_PAGE = 20
+
+  const { userId } = useUser()
+  const { categories: dbCategories, createCategory, findCategoryByName } = useCategories()
   const [transactions, setTransactions] = useState<UITransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [expectedIncome, setExpectedIncome] = useState(0)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [budgets, setBudgets] = useState<Record<string, number>>({})
 
-  // Fetch budgets from database
-  const fetchBudgets = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('budgets')
-      .select('*')
-      .eq('is_active', true)
-      .order('category')
+  // Convert DB categories to UI categories with resolved icons
+  const uiCategories = useMemo<UICategory[]>(() => {
+    return dbCategories
+      .filter(c => c.category_type === 'need' || c.category_type === 'want')
+      .map(dbCategoryToUI)
+  }, [dbCategories])
 
-    if (error) {
-      console.error('Error fetching budgets:', error)
-    } else if (data) {
-      const budgetCategories: Category[] = data.map((budget: {
-        category: string
-        monthly_limit: number
-        icon: string
-        color: string
-      }) => ({
-        icon: iconMap[budget.icon] || CircleDollarSign,
-        name: budget.category,
-        total: 0,
-        budget: Number(budget.monthly_limit),
-        color: budget.color,
-      }))
-      setCategories(budgetCategories)
+  // Map database transaction to UI transaction format using categories from hook
+  const mapDBToUI = useCallback((tx: DBTransaction): UITransaction => {
+    // Try to find category by ID first, then by name
+    let category = tx.category_id
+      ? dbCategories.find(c => c.id === tx.category_id)
+      : findCategoryByName(tx.category || '')
+
+    const icon = category ? getIcon(category.icon) : CircleDollarSign
+    const color = category?.color || DEFAULT_COLOR
+
+    return {
+      id: tx.id,
+      icon,
+      merchant: tx.merchant,
+      category: tx.category || 'Uncategorized',
+      category_id: tx.category_id || category?.id || null,
+      date: formatDisplayDate(tx.date),
+      amount: Math.abs(tx.amount), // UI shows positive amounts
+      color,
+      source: tx.source_name || tx.source,
     }
-  }, [])
+  }, [dbCategories, findCategoryByName])
 
   // Fetch transactions from Supabase
   const fetchTransactions = useCallback(async () => {
@@ -170,7 +114,7 @@ export function TransactionFeed() {
       setTransactions(uiTransactions)
     }
     setLoading(false)
-  }, [])
+  }, [mapDBToUI])
 
   // Fetch expected income from paystubs
   const fetchExpectedIncome = useCallback(async () => {
@@ -192,12 +136,38 @@ export function TransactionFeed() {
     }
   }, [])
 
-  // Load budgets, transactions, and expected income on mount
+  // Fetch budgets from database
+  const fetchBudgets = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('budgets')
+      .select('category, category_id, monthly_limit')
+      .eq('is_active', true)
+
+    if (error) {
+      console.error('Error fetching budgets:', error)
+    } else if (data) {
+      // Create a map of category_id/name to budget amount
+      const budgetMap: Record<string, number> = {}
+      data.forEach((b) => {
+        // Store by category_id if available, otherwise by name
+        if (b.category_id) {
+          budgetMap[b.category_id] = Number(b.monthly_limit)
+        }
+        // Also store by name for fallback matching
+        budgetMap[b.category] = Number(b.monthly_limit)
+      })
+      setBudgets(budgetMap)
+    }
+  }, [])
+
+  // Load transactions, expected income, and budgets on mount or when categories change
   useEffect(() => {
-    fetchBudgets()
-    fetchTransactions()
+    if (dbCategories.length > 0) {
+      fetchTransactions()
+    }
     fetchExpectedIncome()
-  }, [fetchBudgets, fetchTransactions, fetchExpectedIncome])
+    fetchBudgets()
+  }, [fetchTransactions, fetchExpectedIncome, fetchBudgets, dbCategories.length])
 
   const monthData = useMemo(() => {
     const now = new Date()
@@ -211,35 +181,55 @@ export function TransactionFeed() {
     return { currentDay, daysInMonth, daysRemaining, daysElapsed, monthName }
   }, [])
 
+  // Categories with budget totals for display
   const categoriesWithTotals = useMemo(() => {
     const totals: Record<string, number> = {}
     transactions.forEach((t) => {
       totals[t.category] = (totals[t.category] || 0) + t.amount
     })
-    return categories.map((cat) => ({
+
+    return uiCategories.map((cat) => ({
       ...cat,
       total: Math.round((totals[cat.name] || 0) * 100) / 100,
+      // Look up budget by category ID first, then by name
+      budget: budgets[cat.id] || budgets[cat.name] || 0,
     }))
-  }, [categories, transactions])
+  }, [uiCategories, transactions, budgets])
 
   const totalSpent = useMemo(
     () => transactions.reduce((sum, t) => sum + t.amount, 0),
     [transactions]
   )
 
+  // Pagination
+  const totalPages = Math.ceil(transactions.length / ITEMS_PER_PAGE)
+  const paginatedTransactions = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+    return transactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  }, [transactions, currentPage])
+
+  // Reset to page 1 when transactions change (e.g., after import)
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [transactions.length])
+
   const budgetTracking = useMemo(() => {
-    const totalBudget = categories.reduce((sum, cat) => sum + cat.budget, 0)
-    const expectedSpending = (totalBudget * monthData.daysElapsed) / monthData.daysInMonth
+    const totalBudget = categoriesWithTotals.reduce((sum, cat) => sum + cat.budget, 0)
+    const expectedSpending = totalBudget > 0 ? (totalBudget * monthData.daysElapsed) / monthData.daysInMonth : 0
     const difference = totalSpent - expectedSpending
-    const percentageOfBudget = (totalSpent / totalBudget) * 100
+    const percentageOfBudget = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0
     const remainingIncome = expectedIncome - totalSpent
-    const percentageOfIncome = (totalSpent / expectedIncome) * 100
+    const percentageOfIncome = expectedIncome > 0 ? (totalSpent / expectedIncome) * 100 : 0
 
     let status: 'under' | 'on-track' | 'over'
     let statusColor: string
     let statusText: string
 
-    if (difference < -totalBudget * 0.1) {
+    if (totalBudget === 0) {
+      status = 'on-track'
+      statusColor = '#F59E0B'
+      statusText = 'No budget set'
+    } else if (difference < -totalBudget * 0.1) {
       status = 'under'
       statusColor = '#10B981'
       statusText = 'Under budget'
@@ -264,29 +254,54 @@ export function TransactionFeed() {
       statusColor,
       statusText,
     }
-  }, [categories, totalSpent, monthData, expectedIncome])
+  }, [categoriesWithTotals, totalSpent, monthData, expectedIncome])
 
-  const handleCategoryChange = (transactionId: string, category: Category) => {
+  const handleCategoryChange = async (transactionId: string, category: UICategory) => {
+    // Update local state immediately
     setTransactions((prev) =>
       prev.map((t) =>
         t.id === transactionId
-          ? { ...t, category: category.name, icon: category.icon, color: category.color }
+          ? { ...t, category: category.name, category_id: category.id, icon: category.icon, color: category.color }
           : t
       )
     )
+
+    // Update in database
+    const { error } = await supabase
+      .from('transactions')
+      .update({
+        category: category.name,
+        category_id: category.id,
+      })
+      .eq('id', transactionId)
+
+    if (error) {
+      console.error('Error updating transaction category:', error)
+    }
   }
 
-  const handleCreateCategory = (newCategory: Category) => {
-    setCategories((prev) => {
-      if (prev.some((c) => c.name.toLowerCase() === newCategory.name.toLowerCase())) {
-        return prev
-      }
-      return [...prev, newCategory]
+  const handleCreateCategory = async (data: { name: string; icon: string; color: string }) => {
+    const newCategory = await createCategory({
+      name: data.name,
+      icon: data.icon,
+      color: data.color,
+      category_type: 'want', // Default new categories to 'want'
+      is_system: false,
+      is_active: true,
     })
+
+    if (newCategory) {
+      return dbCategoryToUI(newCategory)
+    }
+    return null
   }
 
   const handleCsvImport = async (files: File[]) => {
-    const count = await importCSVFiles(files)
+    if (!userId) {
+      console.error('User not authenticated')
+      return
+    }
+    const count = await importCSVFiles(files, userId)
     console.log(`Imported ${count} transactions`)
     // Refresh transactions from Supabase after import
     await fetchTransactions()
@@ -302,17 +317,14 @@ export function TransactionFeed() {
           transition={{ duration: 0.5 }}
           className="mb-8"
         >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-3">
-              <motion.div animate={{ rotate: [0, 15, -15, 0] }} transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}>
-                <Sparkles className="w-8 h-8 text-[#F59E0B]" />
-              </motion.div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Your Spending</h1>
-            </div>
-            <CsvDropzone onFilesAdded={handleCsvImport} />
+          <div className="flex items-center gap-3 mb-2">
+            <motion.div animate={{ rotate: [0, 15, -15, 0] }} transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}>
+              <Sparkles className="w-8 h-8 text-[#F59E0B]" />
+            </motion.div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Your Spending</h1>
           </div>
           <p className="text-[#1F1410]/60 text-lg">
-            January 2024 •{' '}
+            {monthData.monthName} {new Date().getFullYear()} •{' '}
             <span className="font-semibold text-[#1F1410]">
               ${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>{' '}
@@ -418,24 +430,15 @@ export function TransactionFeed() {
           </div>
         </motion.div>
 
-        {/* Category Cards Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-10">
-          {categoriesWithTotals.map((category, index) => (
-            <CategoryCard
-              key={category.name}
-              icon={category.icon}
-              name={category.name}
-              total={category.total}
-              budget={category.budget}
-              color={category.color}
-              index={index}
-            />
-          ))}
-        </div>
+        {/* Category Budgets Progress List */}
+        <CategoryProgressList categories={categoriesWithTotals} />
 
         {/* Transactions Section */}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6, duration: 0.4 }}>
-          <h2 className="text-xl font-bold text-[#1F1410] mb-4 px-1">Recent Transactions</h2>
+          <div className="flex items-center justify-between mb-4 px-1">
+            <h2 className="text-xl font-bold text-[#1F1410]">Recent Transactions</h2>
+            <CsvDropzone onFilesAdded={handleCsvImport} />
+          </div>
           <div
             className="bg-white rounded-2xl shadow-sm overflow-hidden"
             style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
@@ -456,25 +459,58 @@ export function TransactionFeed() {
                 <p className="text-sm text-[#1F1410]/40">Import a CSV to get started</p>
               </div>
             ) : (
-              <div className="divide-y divide-[#1F1410]/5">
-                {transactions.map((transaction, index) => (
-                  <TransactionItem
-                    key={transaction.id}
-                    id={transaction.id}
-                    icon={transaction.icon}
-                    merchant={transaction.merchant}
-                    category={transaction.category}
-                    date={transaction.date}
-                    amount={transaction.amount}
-                    color={transaction.color}
-                    source={transaction.source}
-                    index={index}
-                    categories={categories}
-                    onCategoryChange={handleCategoryChange}
-                    onCreateCategory={handleCreateCategory}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="divide-y divide-[#1F1410]/5">
+                  {paginatedTransactions.map((transaction, index) => (
+                    <TransactionItem
+                      key={transaction.id}
+                      id={transaction.id}
+                      icon={transaction.icon}
+                      merchant={transaction.merchant}
+                      category={transaction.category}
+                      date={transaction.date}
+                      amount={transaction.amount}
+                      color={transaction.color}
+                      source={transaction.source}
+                      index={index}
+                      categories={uiCategories}
+                      onCategoryChange={handleCategoryChange}
+                      onCreateCategory={handleCreateCategory}
+                    />
+                  ))}
+                </div>
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between px-6 py-4 border-t border-[#1F1410]/5">
+                    <p className="text-sm text-[#1F1410]/50">
+                      Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}-
+                      {Math.min(currentPage * ITEMS_PER_PAGE, transactions.length)} of {transactions.length}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#1F1410]/5"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                        Previous
+                      </button>
+                      <span className="text-sm text-[#1F1410]/60 px-2">
+                        Page {currentPage} of {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#1F1410]/5"
+                      >
+                        Next
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </motion.div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   PiggyBank,
@@ -14,18 +14,40 @@ import {
   AlertCircle,
   Calendar,
   Plus,
-  ChevronDown,
+  Pencil,
+  Trash2,
   LucideIcon,
+  Loader2,
+  Building2,
 } from 'lucide-react'
 import { GoalCustomizationModal } from './GoalCustomizationModal'
+import { GoalContributionHistory } from './GoalContributionHistory'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
 
 type GoalTemplate = {
   id: string
   name: string
   icon: LucideIcon
+  iconName: string
   color: string
   suggestedAmount: number
   description: string
+  goalType: string
+}
+
+// Map icon names to Lucide components (for editing existing goals)
+const iconNameToComponent: Record<string, LucideIcon> = {
+  Shield,
+  Heart,
+  Home,
+  Plane,
+  Car,
+  GraduationCap,
+  TrendingUp,
+  Sparkles,
+  PiggyBank,
+  Building2,
 }
 
 type ActiveGoal = {
@@ -38,51 +60,188 @@ type ActiveGoal = {
   targetDate: Date
   monthlyTarget: number
   status: 'on-track' | 'ahead' | 'behind'
+  autoContribute: boolean
+  contributionField: string | null
 }
 
-const goalTemplates: GoalTemplate[] = [
-  { id: 'emergency', name: 'Emergency Fund', icon: Shield, color: '#10B981', suggestedAmount: 10000, description: '3-6 months of expenses' },
-  { id: 'wedding', name: 'Wedding', icon: Heart, color: '#EC4899', suggestedAmount: 25000, description: 'Your special day' },
-  { id: 'house', name: 'House Down Payment', icon: Home, color: '#F59E0B', suggestedAmount: 50000, description: '20% down payment' },
-  { id: 'vacation', name: 'Dream Vacation', icon: Plane, color: '#38BDF8', suggestedAmount: 5000, description: 'Travel the world' },
-  { id: 'car', name: 'New Car', icon: Car, color: '#6366F1', suggestedAmount: 30000, description: 'Upgrade your ride' },
-  { id: 'education', name: 'Education', icon: GraduationCap, color: '#8B5CF6', suggestedAmount: 20000, description: 'Invest in learning' },
-  { id: 'retirement', name: 'Retirement', icon: TrendingUp, color: '#A855F7', suggestedAmount: 100000, description: 'Secure your future' },
-  { id: 'custom', name: 'Custom Goal', icon: Sparkles, color: '#FF6B6B', suggestedAmount: 0, description: 'Create your own' },
-]
+type DbGoal = {
+  id: string
+  name: string
+  target_amount: number
+  current_amount: number
+  deadline: string | null
+  goal_type: string
+  icon: string
+  color: string
+  is_active: boolean
+  auto_contribute: boolean
+  contribution_field: string | null
+}
+
+// Convert database goal to ActiveGoal for display
+const dbGoalToActiveGoal = (dbGoal: DbGoal): ActiveGoal => {
+  const targetDate = dbGoal.deadline ? new Date(dbGoal.deadline) : new Date()
+  const now = new Date()
+  const monthsUntilTarget = (targetDate.getFullYear() - now.getFullYear()) * 12 +
+    (targetDate.getMonth() - now.getMonth())
+  const monthlyTarget = monthsUntilTarget > 0
+    ? Math.round(Number(dbGoal.target_amount) / monthsUntilTarget)
+    : Number(dbGoal.target_amount)
+
+  // Calculate status based on progress
+  const progressRatio = Number(dbGoal.current_amount) / Number(dbGoal.target_amount)
+  const timeRatio = dbGoal.deadline
+    ? 1 - (monthsUntilTarget / 12) // Rough estimate assuming 12 month goals
+    : 0.5
+
+  let status: 'on-track' | 'ahead' | 'behind' = 'on-track'
+  if (progressRatio > timeRatio + 0.1) status = 'ahead'
+  else if (progressRatio < timeRatio - 0.1) status = 'behind'
+
+  return {
+    id: dbGoal.id,
+    name: dbGoal.name,
+    icon: iconNameToComponent[dbGoal.icon] || Sparkles,
+    color: dbGoal.color,
+    currentAmount: Number(dbGoal.current_amount),
+    targetAmount: Number(dbGoal.target_amount),
+    targetDate,
+    monthlyTarget,
+    status,
+    autoContribute: dbGoal.auto_contribute,
+    contributionField: dbGoal.contribution_field,
+  }
+}
 
 export function SavingsView() {
-  const [selectedGoal, setSelectedGoal] = useState<GoalTemplate | null>(null)
+  const { user } = useAuth()
+  const [selectedGoalTemplate, setSelectedGoalTemplate] = useState<GoalTemplate | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [showTemplates, setShowTemplates] = useState(false)
   const [activeGoals, setActiveGoals] = useState<ActiveGoal[]>([])
+  const [editingGoal, setEditingGoal] = useState<ActiveGoal | null>(null)
+  const [deletingGoalId, setDeletingGoalId] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const handleSelectGoal = (goal: GoalTemplate) => {
-    setSelectedGoal(goal)
+  // Fetch goals from database
+  const fetchGoals = useCallback(async () => {
+    setIsLoading(true)
+    const { data, error } = await supabase
+      .from('goals')
+      .select('id, name, target_amount, current_amount, deadline, goal_type, icon, color, is_active, auto_contribute, contribution_field')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching goals:', error)
+    } else if (data) {
+      setActiveGoals(data.map(dbGoalToActiveGoal))
+    }
+    setIsLoading(false)
+  }, [])
+
+  // Fetch goals on mount
+  useEffect(() => {
+    fetchGoals()
+  }, [fetchGoals])
+
+  const handleSaveGoal = async (customizedGoal: { id?: string; name: string; amount: number; currentAmount?: number; targetDate: Date; template: GoalTemplate; autoContribute?: boolean; contributionField?: string | null }) => {
+    const deadlineStr = customizedGoal.targetDate.toISOString().split('T')[0]
+
+    if (customizedGoal.id) {
+      // Edit mode: update existing goal in database
+      const { error } = await supabase
+        .from('goals')
+        .update({
+          name: customizedGoal.name,
+          target_amount: customizedGoal.amount,
+          deadline: deadlineStr,
+          auto_contribute: customizedGoal.autoContribute ?? false,
+          contribution_field: customizedGoal.contributionField ?? null,
+        })
+        .eq('id', customizedGoal.id)
+
+      if (error) {
+        console.error('Error updating goal:', error)
+      } else {
+        await fetchGoals()
+      }
+      setEditingGoal(null)
+    } else {
+      // Create mode: insert new goal into database
+      if (!user) {
+        console.error('No user logged in')
+        return
+      }
+
+      const { error } = await supabase
+        .from('goals')
+        .insert({
+          user_id: user.id,
+          name: customizedGoal.name,
+          target_amount: customizedGoal.amount,
+          current_amount: 0,
+          deadline: deadlineStr,
+          goal_type: customizedGoal.template.goalType,
+          icon: customizedGoal.template.iconName,
+          color: customizedGoal.template.color,
+          is_active: true,
+          auto_contribute: customizedGoal.autoContribute ?? false,
+          contribution_field: customizedGoal.contributionField ?? null,
+        })
+
+      if (error) {
+        console.error('Error creating goal:', error)
+      } else {
+        await fetchGoals()
+      }
+    }
+  }
+
+  const handleAddGoal = () => {
+    setSelectedGoalTemplate(null)
+    setEditingGoal(null)
     setIsModalOpen(true)
   }
 
-  const handleSaveGoal = (customizedGoal: { name: string; amount: number; targetDate: Date; template: GoalTemplate }) => {
-    const now = new Date()
-    const monthsUntilTarget = (customizedGoal.targetDate.getFullYear() - now.getFullYear()) * 12 +
-      (customizedGoal.targetDate.getMonth() - now.getMonth())
-    const monthlyTarget = monthsUntilTarget > 0 ? Math.round(customizedGoal.amount / monthsUntilTarget) : customizedGoal.amount
+  const handleEditGoal = (goal: ActiveGoal) => {
+    // Construct a template from the existing goal's data for editing
+    const iconName = Object.keys(iconNameToComponent).find(
+      key => iconNameToComponent[key] === goal.icon
+    ) || 'Sparkles'
 
-    const newGoal: ActiveGoal = {
-      id: crypto.randomUUID(),
-      name: customizedGoal.name,
-      icon: customizedGoal.template.icon,
-      color: customizedGoal.template.color,
-      currentAmount: 0,
-      targetAmount: customizedGoal.amount,
-      targetDate: customizedGoal.targetDate,
-      monthlyTarget,
-      status: 'on-track',
+    const template: GoalTemplate = {
+      id: goal.id,
+      name: goal.name,
+      icon: goal.icon,
+      iconName,
+      color: goal.color,
+      suggestedAmount: goal.targetAmount,
+      description: '',
+      goalType: 'custom',
     }
+    setSelectedGoalTemplate(template)
+    setEditingGoal(goal)
+    setIsModalOpen(true)
+  }
 
-    // Prepend new goal to the top
-    setActiveGoals(prev => [newGoal, ...prev])
-    setShowTemplates(false)
+  const handleDeleteGoal = async (goalId: string) => {
+    const { error } = await supabase
+      .from('goals')
+      .delete()
+      .eq('id', goalId)
+
+    if (error) {
+      console.error('Error deleting goal:', error)
+    } else {
+      setActiveGoals(prev => prev.filter(goal => goal.id !== goalId))
+    }
+    setDeletingGoalId(null)
+  }
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false)
+    setEditingGoal(null)
+    setSelectedGoalTemplate(null)
   }
 
   const getStatusColor = (status: ActiveGoal['status']) => {
@@ -130,22 +289,35 @@ export function SavingsView() {
         </motion.div>
 
         {/* Active Goals */}
-        {activeGoals.length > 0 && (
+        {isLoading ? (
+          <div className="mb-8 flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 text-[#38BDF8] animate-spin" />
+          </div>
+        ) : (
           <div className="mb-8">
-            <h2 className="text-xl font-bold text-[#1F1410] mb-4">Active Goals</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-[#1F1410]">Active Goals</h2>
+              <button
+                onClick={handleAddGoal}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[#38BDF8] hover:bg-[#38BDF8]/10 rounded-lg transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Add Goal
+              </button>
+            </div>
+            {activeGoals.length === 0 && (
+              <p className="text-[#1F1410]/50 text-sm">No active goals yet. Click "Add Goal" to create one.</p>
+            )}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {activeGoals.map((goal, index) => {
+              {activeGoals.map((goal) => {
                 const Icon = goal.icon
                 const StatusIcon = getStatusIcon(goal.status)
                 const statusColor = getStatusColor(goal.status)
                 const progressPercentage = (goal.currentAmount / goal.targetAmount) * 100
                 const remaining = goal.targetAmount - goal.currentAmount
                 return (
-                  <motion.div
+                  <div
                     key={goal.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 + index * 0.1, duration: 0.4 }}
                     className="bg-white rounded-2xl p-6 shadow-sm"
                     style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
                   >
@@ -168,12 +340,30 @@ export function SavingsView() {
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <StatusIcon className="w-4 h-4" style={{ color: statusColor }} />
-                        <span className="text-xs font-semibold" style={{ color: statusColor }}>
-                          {getStatusText(goal.status)}
-                        </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleEditGoal(goal)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[#1F1410]/5 transition-colors"
+                          title="Edit goal"
+                        >
+                          <Pencil className="w-4 h-4 text-[#1F1410]/40 hover:text-[#1F1410]/60" />
+                        </button>
+                        <button
+                          onClick={() => setDeletingGoalId(goal.id)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-red-50 transition-colors"
+                          title="Delete goal"
+                        >
+                          <Trash2 className="w-4 h-4 text-[#1F1410]/40 hover:text-red-500" />
+                        </button>
                       </div>
+                    </div>
+
+                    {/* Status Badge */}
+                    <div className="flex items-center gap-1.5 mb-4">
+                      <StatusIcon className="w-4 h-4" style={{ color: statusColor }} />
+                      <span className="text-xs font-semibold" style={{ color: statusColor }}>
+                        {getStatusText(goal.status)}
+                      </span>
                     </div>
 
                     {/* Progress Amount */}
@@ -192,12 +382,12 @@ export function SavingsView() {
                         <span>${goal.monthlyTarget.toLocaleString()}/month</span>
                       </div>
                       <div className="h-2.5 bg-[#1F1410]/5 rounded-full overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${Math.min(progressPercentage, 100)}%` }}
-                          transition={{ delay: 0.5 + index * 0.1, duration: 1, ease: 'easeOut' }}
+                        <div
                           className="h-full rounded-full"
-                          style={{ backgroundColor: goal.color }}
+                          style={{
+                            backgroundColor: goal.color,
+                            width: `${Math.min(progressPercentage, 100)}%`,
+                          }}
                         />
                       </div>
                     </div>
@@ -210,98 +400,88 @@ export function SavingsView() {
                         {goal.status === 'behind' && <>Consider increasing monthly contributions to stay on track.</>}
                       </p>
                     </div>
-                  </motion.div>
+
+                    {/* Contribution History */}
+                    <GoalContributionHistory goalId={goal.id} goalColor={goal.color} />
+                  </div>
                 )
               })}
             </div>
           </div>
         )}
-
-        {/* Create New Goal Button */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6, duration: 0.4 }}
-        >
-          <motion.button
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.99 }}
-            onClick={() => setShowTemplates(!showTemplates)}
-            className="w-full p-4 bg-white rounded-xl border-2 border-[#1F1410]/10 hover:border-[#38BDF8]/30 transition-all flex items-center justify-between"
-            style={{ boxShadow: '0 2px 8px rgba(31, 20, 16, 0.04)' }}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-[#38BDF8]/10 flex items-center justify-center">
-                <Plus className="w-5 h-5 text-[#38BDF8]" />
-              </div>
-              <div className="text-left">
-                <p className="font-semibold text-[#1F1410]">Create New Goal</p>
-                <p className="text-xs text-[#1F1410]/50">Choose from templates or create custom</p>
-              </div>
-            </div>
-            <motion.div animate={{ rotate: showTemplates ? 180 : 0 }} transition={{ duration: 0.3 }}>
-              <ChevronDown className="w-5 h-5 text-[#1F1410]/40" />
-            </motion.div>
-          </motion.button>
-        </motion.div>
-
-        {/* Goal Templates Section - Collapsible */}
-        <AnimatePresence>
-          {showTemplates && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3, ease: 'easeInOut' }}
-              className="overflow-hidden"
-            >
-              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {goalTemplates.map((goal, index) => {
-                  const Icon = goal.icon
-                  return (
-                    <motion.button
-                      key={goal.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 20 }}
-                      transition={{ delay: index * 0.05, duration: 0.3 }}
-                      whileHover={{ scale: 1.02, y: -4 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => handleSelectGoal(goal)}
-                      className="bg-white p-6 rounded-2xl border-2 border-[#1F1410]/10 hover:border-[#1F1410]/20 transition-all text-left"
-                      style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
-                    >
-                      <motion.div
-                        whileHover={{ rotate: 5, scale: 1.1 }}
-                        transition={{ type: 'spring', stiffness: 400, damping: 17 }}
-                        className="w-14 h-14 rounded-xl flex items-center justify-center mb-4"
-                        style={{ backgroundColor: `${goal.color}15` }}
-                      >
-                        <Icon className="w-7 h-7" style={{ color: goal.color }} />
-                      </motion.div>
-                      <h3 className="font-bold text-lg text-[#1F1410] mb-1">{goal.name}</h3>
-                      <p className="text-sm text-[#1F1410]/50 mb-3">{goal.description}</p>
-                      {goal.suggestedAmount > 0 && (
-                        <p className="text-base font-semibold" style={{ color: goal.color }}>
-                          ${goal.suggestedAmount.toLocaleString()}
-                        </p>
-                      )}
-                    </motion.button>
-                  )
-                })}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
       {/* Goal Customization Modal */}
       <GoalCustomizationModal
         isOpen={isModalOpen}
-        goal={selectedGoal}
-        onClose={() => setIsModalOpen(false)}
+        goal={selectedGoalTemplate}
+        editingGoal={editingGoal ? {
+          id: editingGoal.id,
+          name: editingGoal.name,
+          currentAmount: editingGoal.currentAmount,
+          targetAmount: editingGoal.targetAmount,
+          targetDate: editingGoal.targetDate,
+          autoContribute: editingGoal.autoContribute,
+          contributionField: editingGoal.contributionField,
+        } : null}
+        onClose={handleCloseModal}
         onSave={handleSaveGoal}
       />
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deletingGoalId && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setDeletingGoalId(null)}
+              className="fixed inset-0 bg-[#1F1410]/40 backdrop-blur-sm z-50"
+            />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center">
+                    <Trash2 className="w-6 h-6 text-red-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-[#1F1410]">Delete Goal</h3>
+                    <p className="text-sm text-[#1F1410]/60">This action cannot be undone</p>
+                  </div>
+                </div>
+                <p className="text-sm text-[#1F1410]/70 mb-6">
+                  Are you sure you want to delete this savings goal? All progress tracking will be lost.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setDeletingGoalId(null)}
+                    className="flex-1 px-4 py-3 rounded-xl font-semibold text-[#1F1410]/60 hover:bg-[#1F1410]/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => handleDeleteGoal(deletingGoalId)}
+                    className="flex-1 px-4 py-3 rounded-xl font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors"
+                  >
+                    Delete
+                  </motion.button>
+                </div>
+              </motion.div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
