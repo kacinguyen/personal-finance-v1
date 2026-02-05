@@ -8,6 +8,8 @@ type CategoryGroup = {
   children: UICategory[]
 }
 
+export type TransactionType = 'income' | 'expense' | 'transfer'
+
 export type TransactionFormData = {
   id?: string
   merchant: string
@@ -16,6 +18,7 @@ export type TransactionFormData = {
   category: UICategory | null
   tags: string | null
   notes: string | null
+  type: TransactionType
 }
 
 type AddTransactionModalProps = {
@@ -24,6 +27,8 @@ type AddTransactionModalProps = {
   onSave: (transaction: TransactionFormData) => Promise<void>
   onDelete?: (transactionId: string) => Promise<void>
   categories: UICategory[]
+  incomeCategories: UICategory[]
+  transferCategories: UICategory[]
   defaultDate?: string
   editTransaction?: TransactionFormData | null
 }
@@ -34,6 +39,8 @@ export function AddTransactionModal({
   onSave,
   onDelete,
   categories,
+  incomeCategories,
+  transferCategories,
   defaultDate,
   editTransaction,
 }: AddTransactionModalProps) {
@@ -47,6 +54,7 @@ export function AddTransactionModal({
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [transactionType, setTransactionType] = useState<TransactionType>('expense')
 
   const isEditing = !!editTransaction?.id
   const merchantInputRef = useRef<HTMLInputElement>(null)
@@ -68,6 +76,7 @@ export function AddTransactionModal({
       setSelectedCategory(editTransaction.category)
       setTags(editTransaction.tags || '')
       setNotes(editTransaction.notes || '')
+      setTransactionType(editTransaction.type || 'expense')
       setError(null)
     } else if (!isOpen) {
       setMerchant('')
@@ -76,6 +85,7 @@ export function AddTransactionModal({
       setSelectedCategory(null)
       setTags('')
       setNotes('')
+      setTransactionType('expense')
       setError(null)
     }
   }, [isOpen, editTransaction, defaultDate])
@@ -91,10 +101,22 @@ export function AddTransactionModal({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Get the active categories based on transaction type
+  const activeCategories = useMemo(() => {
+    switch (transactionType) {
+      case 'income':
+        return incomeCategories
+      case 'transfer':
+        return transferCategories
+      default:
+        return categories
+    }
+  }, [transactionType, categories, incomeCategories, transferCategories])
+
   // Organize categories into hierarchical groups
   const categoryGroups = useMemo((): CategoryGroup[] => {
-    const parents = categories.filter(c => !c.parent_id)
-    const children = categories.filter(c => c.parent_id)
+    const parents = activeCategories.filter(c => !c.parent_id)
+    const children = activeCategories.filter(c => c.parent_id)
 
     // Build a map of parent_id to children
     const childMap = new Map<string, UICategory[]>()
@@ -111,7 +133,7 @@ export function AddTransactionModal({
       parent,
       children: childMap.get(parent.id) || [],
     }))
-  }, [categories])
+  }, [activeCategories])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -144,6 +166,7 @@ export function AddTransactionModal({
         category: selectedCategory,
         tags: tags.trim() || null,
         notes: notes.trim() || null,
+        type: transactionType,
       })
       onClose()
     } catch (err) {
@@ -228,6 +251,32 @@ export function AddTransactionModal({
 
               {/* Form */}
               <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1">
+                {/* Transaction Type Toggle */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-1.5">
+                    Type
+                  </label>
+                  <div className="flex items-center gap-1 bg-[#1F1410]/5 rounded-lg p-1">
+                    {(['expense', 'income', 'transfer'] as TransactionType[]).map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => {
+                          setTransactionType(type)
+                          setSelectedCategory(null)
+                        }}
+                        className={`flex-1 px-3 py-1.5 rounded-md text-sm font-medium capitalize transition-all ${
+                          transactionType === type
+                            ? 'bg-white text-[#1F1410] shadow-sm'
+                            : 'text-[#1F1410]/60 hover:text-[#1F1410]'
+                        }`}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Merchant Name */}
                 <div>
                   <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-1.5">
