@@ -18,11 +18,15 @@ import {
   FileText,
   Pencil,
   Trash2,
+  SlidersHorizontal,
+  X,
+  Split,
 } from 'lucide-react'
 import { TransactionItem } from './TransactionItem'
 import { UICategory, dbCategoryToUI } from './CategoryDropdown'
 import { CsvDropzone } from './CsvDropzone'
 import { AddTransactionModal, TransactionFormData } from './AddTransactionModal'
+import { SplitTransactionModal } from './SplitTransactionModal'
 import { importCSVFiles } from '../lib/csvImport'
 import { supabase } from '../lib/supabase'
 import { getIcon, DEFAULT_COLOR } from '../lib/iconMap'
@@ -31,7 +35,18 @@ import { MonthPicker, getMonthRange } from './MonthPicker'
 import { TAB_COLORS } from '../lib/colors'
 import { SHADOWS } from '../lib/styles'
 import type { Transaction as DBTransaction } from '../types/transaction'
+import type { TransactionSplit } from '../types/transactionSplit'
+import type { UISplit } from '../types/transactionSplit'
 import { useUser } from '../hooks/useUser'
+
+type UITransactionSplit = {
+  id: string
+  amount: number
+  category: string | null
+  category_id: string | null
+  notes: string | null
+  color: string
+}
 
 type UITransaction = {
   id: string
@@ -48,6 +63,7 @@ type UITransaction = {
   tags: string | null
   notes: string | null
   type: 'income' | 'expense' | 'transfer'
+  splits: UITransactionSplit[]
 }
 
 type FilterType = 'all' | 'income' | 'expense' | 'transfer'
@@ -100,8 +116,11 @@ export function TransactionsView() {
     accountSource: null,
     searchQuery: '',
   })
+  const [showTypeDropdown, setShowTypeDropdown] = useState(false)
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
   const [showSourceDropdown, setShowSourceDropdown] = useState(false)
+  const [showFiltersPanel, setShowFiltersPanel] = useState(false)
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false)
 
   // Convert DB categories to UI categories with resolved icons (all categories for filtering)
   const allUiCategories = useMemo<UICategory[]>(() => {
@@ -139,7 +158,7 @@ export function TransactionsView() {
   }, [transactions])
 
   // Map database transaction to UI transaction format
-  const mapDBToUI = useCallback((tx: DBTransaction): UITransaction => {
+  const mapDBToUI = useCallback((tx: DBTransaction, splits: TransactionSplit[] = []): UITransaction => {
     let category = tx.category_id
       ? dbCategories.find(c => c.id === tx.category_id)
       : findCategoryByName(tx.category || '')
@@ -154,6 +173,21 @@ export function TransactionsView() {
     } else if (category?.category_type === 'transfer' || transferCategories.some(tc => tc.id === tx.category_id)) {
       type = 'transfer'
     }
+
+    // Map splits to UI format
+    const uiSplits: UITransactionSplit[] = splits.map(split => {
+      const splitCategory = split.category_id
+        ? dbCategories.find(c => c.id === split.category_id)
+        : null
+      return {
+        id: split.id,
+        amount: split.amount,
+        category: splitCategory?.name || split.category || null,
+        category_id: split.category_id,
+        notes: split.notes,
+        color: splitCategory?.color || DEFAULT_COLOR,
+      }
+    })
 
     return {
       id: tx.id,
@@ -170,6 +204,7 @@ export function TransactionsView() {
       tags: tx.tags || null,
       notes: tx.notes || null,
       type,
+      splits: uiSplits,
     }
   }, [dbCategories, findCategoryByName, transferCategories])
 
@@ -178,19 +213,48 @@ export function TransactionsView() {
     setLoading(true)
     const { startOfMonth, endOfMonth } = getMonthRange(selectedMonth)
 
-    const { data, error } = await supabase
+    // Fetch transactions
+    const { data: txData, error: txError } = await supabase
       .from('transactions')
       .select('*')
       .gte('date', startOfMonth)
       .lte('date', endOfMonth)
       .order('date', { ascending: false })
 
-    if (error) {
-      console.error('Error fetching transactions:', error)
-    } else if (data) {
-      const uiTransactions = (data as DBTransaction[]).map(mapDBToUI)
-      setTransactions(uiTransactions)
+    if (txError) {
+      console.error('Error fetching transactions:', txError)
+      setLoading(false)
+      return
     }
+
+    if (!txData) {
+      setTransactions([])
+      setLoading(false)
+      return
+    }
+
+    // Fetch all splits for these transactions
+    const txIds = txData.map(tx => tx.id)
+    const { data: splitsData } = await supabase
+      .from('transaction_splits')
+      .select('*')
+      .in('transaction_id', txIds)
+
+    // Group splits by transaction_id
+    const splitsByTxId = new Map<string, TransactionSplit[]>()
+    if (splitsData) {
+      for (const split of splitsData as TransactionSplit[]) {
+        const existing = splitsByTxId.get(split.transaction_id) || []
+        existing.push(split)
+        splitsByTxId.set(split.transaction_id, existing)
+      }
+    }
+
+    // Map transactions with their splits
+    const uiTransactions = (txData as DBTransaction[]).map(tx =>
+      mapDBToUI(tx, splitsByTxId.get(tx.id) || [])
+    )
+    setTransactions(uiTransactions)
     setLoading(false)
   }, [mapDBToUI, selectedMonth])
 
@@ -376,6 +440,47 @@ export function TransactionsView() {
     setSelectedTransaction(null)
   }
 
+  const handleSaveSplits = async (splits: UISplit[]) => {
+    if (!selectedTransaction) return
+
+    // Delete existing splits first
+    const { error: deleteError } = await supabase
+      .from('transaction_splits')
+      .delete()
+      .eq('transaction_id', selectedTransaction.id)
+
+    if (deleteError) {
+      console.error('Error deleting existing splits:', deleteError)
+      throw new Error('Failed to update splits')
+    }
+
+    // If no splits provided, we're removing all splits
+    if (splits.length === 0) {
+      await fetchTransactions()
+      return
+    }
+
+    // Insert new splits
+    const splitsToInsert = splits.map(split => ({
+      transaction_id: selectedTransaction.id,
+      amount: split.amount,
+      category: split.category_name,
+      category_id: split.category_id,
+      notes: split.notes,
+    }))
+
+    const { error: insertError } = await supabase
+      .from('transaction_splits')
+      .insert(splitsToInsert)
+
+    if (insertError) {
+      console.error('Error inserting splits:', insertError)
+      throw new Error('Failed to save splits')
+    }
+
+    await fetchTransactions()
+  }
+
   const handleAddNewTransaction = () => {
     setEditingTransaction(null)
     setIsAddModalOpen(true)
@@ -408,6 +513,12 @@ export function TransactionsView() {
   const selectedCategory = filters.categoryId
     ? allUiCategories.find(c => c.id === filters.categoryId)
     : null
+
+  const activeFilterCount = [
+    filters.type !== 'all',
+    filters.categoryId !== null,
+    filters.accountSource !== null,
+  ].filter(Boolean).length
 
   return (
     <div className="min-h-screen w-full bg-[#FFFBF5] py-8 px-4 sm:px-6 lg:px-8">
@@ -518,218 +629,257 @@ export function TransactionsView() {
           </div>
         </motion.div>
 
-        {/* Filters Row */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.3 }}
-          className="bg-white rounded-2xl p-4 mb-6"
-          style={{ boxShadow: SHADOWS.card }}
-        >
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Type Filter Buttons */}
-            <div className="flex items-center gap-1 bg-[#1F1410]/5 rounded-lg p-1">
-              {filterTypes.map((type) => (
-                <button
-                  key={type.id}
-                  onClick={() => setFilters(f => ({ ...f, type: type.id }))}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                    filters.type === type.id
-                      ? 'bg-white text-[#1F1410] shadow-sm'
-                      : 'text-[#1F1410]/60 hover:text-[#1F1410]'
-                  }`}
-                >
-                  {type.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Category Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  setShowCategoryDropdown(!showCategoryDropdown)
-                  setShowSourceDropdown(false)
-                }}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#1F1410]/10 text-sm hover:border-[#1F1410]/20 transition-colors"
-              >
-                {selectedCategory ? (
-                  <>
-                    <div
-                      className="w-5 h-5 rounded flex items-center justify-center"
-                      style={{ backgroundColor: `${selectedCategory.color}15` }}
-                    >
-                      <selectedCategory.icon
-                        className="w-3 h-3"
-                        style={{ color: selectedCategory.color }}
-                      />
-                    </div>
-                    <span className="text-[#1F1410]">{selectedCategory.name}</span>
-                  </>
-                ) : (
-                  <span className="text-[#1F1410]/60">Category</span>
-                )}
-                <ChevronDown className="w-4 h-4 text-[#1F1410]/40" />
-              </button>
-
-              {showCategoryDropdown && (
-                <div
-                  className="absolute top-full left-0 mt-2 bg-white rounded-xl border border-[#1F1410]/10 shadow-lg z-50 min-w-[200px] max-h-[300px] overflow-y-auto"
-                  onMouseLeave={() => setShowCategoryDropdown(false)}
-                >
-                  <button
-                    onClick={() => {
-                      setFilters(f => ({ ...f, categoryId: null }))
-                      setShowCategoryDropdown(false)
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm text-[#1F1410]/60 hover:bg-[#1F1410]/5 transition-colors"
-                  >
-                    All Categories
-                  </button>
-                  {allUiCategories.map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => {
-                        setFilters(f => ({ ...f, categoryId: cat.id }))
-                        setShowCategoryDropdown(false)
-                      }}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-left text-sm hover:bg-[#1F1410]/5 transition-colors"
-                    >
-                      <div
-                        className="w-5 h-5 rounded flex items-center justify-center"
-                        style={{ backgroundColor: `${cat.color}15` }}
-                      >
-                        <cat.icon className="w-3 h-3" style={{ color: cat.color }} />
-                      </div>
-                      <span className="text-[#1F1410]">{cat.name}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Source Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  setShowSourceDropdown(!showSourceDropdown)
-                  setShowCategoryDropdown(false)
-                }}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#1F1410]/10 text-sm hover:border-[#1F1410]/20 transition-colors"
-              >
-                <span className={filters.accountSource ? 'text-[#1F1410]' : 'text-[#1F1410]/60'}>
-                  {filters.accountSource || 'Source'}
-                </span>
-                <ChevronDown className="w-4 h-4 text-[#1F1410]/40" />
-              </button>
-
-              {showSourceDropdown && (
-                <div
-                  className="absolute top-full left-0 mt-2 bg-white rounded-xl border border-[#1F1410]/10 shadow-lg z-50 min-w-[180px] max-h-[300px] overflow-y-auto"
-                  onMouseLeave={() => setShowSourceDropdown(false)}
-                >
-                  <button
-                    onClick={() => {
-                      setFilters(f => ({ ...f, accountSource: null }))
-                      setShowSourceDropdown(false)
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm text-[#1F1410]/60 hover:bg-[#1F1410]/5 transition-colors"
-                  >
-                    All Sources
-                  </button>
-                  {accountSources.map((source) => (
-                    <button
-                      key={source}
-                      onClick={() => {
-                        setFilters(f => ({ ...f, accountSource: source }))
-                        setShowSourceDropdown(false)
-                      }}
-                      className="w-full px-4 py-2 text-left text-sm text-[#1F1410] hover:bg-[#1F1410]/5 transition-colors"
-                    >
-                      {source}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Search Input */}
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1F1410]/40" />
-              <input
-                type="text"
-                placeholder="Search transactions..."
-                value={filters.searchQuery}
-                onChange={(e) => setFilters(f => ({ ...f, searchQuery: e.target.value }))}
-                className="w-full pl-9 pr-4 py-2 rounded-lg border border-[#1F1410]/10 text-sm focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/20 focus:border-[#8B5CF6]/30 transition-all"
-              />
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center gap-2 ml-auto">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleAddNewTransaction}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
-                style={{ backgroundColor: TAB_COLORS.transactions }}
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add</span>
-              </motion.button>
-              <CsvDropzone onFilesAdded={handleCsvImport} />
-            </div>
-          </div>
-
-          {/* Active Filters Display */}
-          {(filters.type !== 'all' || filters.categoryId || filters.accountSource || filters.searchQuery) && (
-            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#1F1410]/5">
-              <span className="text-xs text-[#1F1410]/50">Active filters:</span>
-              {filters.type !== 'all' && (
-                <span className="px-2 py-1 text-xs font-medium rounded-full bg-[#8B5CF6]/10 text-[#8B5CF6]">
-                  {filters.type}
-                </span>
-              )}
-              {selectedCategory && (
-                <span
-                  className="px-2 py-1 text-xs font-medium rounded-full"
-                  style={{ backgroundColor: `${selectedCategory.color}15`, color: selectedCategory.color }}
-                >
-                  {selectedCategory.name}
-                </span>
-              )}
-              {filters.accountSource && (
-                <span className="px-2 py-1 text-xs font-medium rounded-full bg-[#1F1410]/10 text-[#1F1410]/70">
-                  {filters.accountSource}
-                </span>
-              )}
-              {filters.searchQuery && (
-                <span className="px-2 py-1 text-xs font-medium rounded-full bg-[#1F1410]/10 text-[#1F1410]/70">
-                  "{filters.searchQuery}"
-                </span>
-              )}
-              <button
-                onClick={() => setFilters({ type: 'all', categoryId: null, accountSource: null, searchQuery: '' })}
-                className="ml-auto text-xs text-[#1F1410]/50 hover:text-[#1F1410] transition-colors"
-              >
-                Clear all
-              </button>
-            </div>
-          )}
-        </motion.div>
-
         {/* Two Column Layout: Transactions List + Details Panel */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.4, duration: 0.4 }}
+          transition={{ delay: 0.3, duration: 0.4 }}
           className="grid grid-cols-1 lg:grid-cols-[1fr,380px] gap-6"
         >
-          {/* Left Column: Transactions List */}
+          {/* Left Column: Search/Filters + Transactions List */}
           <div
             className="bg-white rounded-2xl overflow-hidden"
             style={{ boxShadow: SHADOWS.card }}
           >
+            {/* Search and Filter Bar */}
+            <div className="p-4 border-b border-[#1F1410]/5">
+              <div className="flex items-center gap-3">
+                {/* Search Input */}
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1F1410]/40" />
+                  <input
+                    type="text"
+                    placeholder="Search transactions..."
+                    value={filters.searchQuery}
+                    onChange={(e) => setFilters(f => ({ ...f, searchQuery: e.target.value }))}
+                    className="w-full pl-9 pr-4 py-2 rounded-lg border border-[#1F1410]/10 text-sm focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/20 focus:border-[#8B5CF6]/30 transition-all"
+                  />
+                </div>
+
+                {/* Filter Button */}
+                <button
+                  onClick={() => setShowFiltersPanel(!showFiltersPanel)}
+                  className={`relative flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                    showFiltersPanel || activeFilterCount > 0
+                      ? 'border-[#8B5CF6]/30 bg-[#8B5CF6]/5 text-[#8B5CF6]'
+                      : 'border-[#1F1410]/10 text-[#1F1410]/60 hover:border-[#1F1410]/20 hover:text-[#1F1410]'
+                  }`}
+                >
+                  <SlidersHorizontal className="w-4 h-4" />
+                  <span>Filter</span>
+                  {activeFilterCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#8B5CF6] text-white text-xs font-bold flex items-center justify-center">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* Action Buttons */}
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleAddNewTransaction}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+                  style={{ backgroundColor: TAB_COLORS.transactions }}
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add</span>
+                </motion.button>
+                <CsvDropzone onFilesAdded={handleCsvImport} />
+              </div>
+
+              {/* Expanded Filters Panel */}
+              {showFiltersPanel && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-4 pt-4 border-t border-[#1F1410]/5"
+                >
+                  <div className="flex flex-wrap gap-6">
+                    {/* Type Filter */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-2">
+                        Type
+                      </label>
+                      <div className="relative">
+                        <button
+                          onClick={() => {
+                            setShowTypeDropdown(!showTypeDropdown)
+                            setShowCategoryDropdown(false)
+                            setShowSourceDropdown(false)
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#1F1410]/10 text-sm hover:border-[#1F1410]/20 transition-colors"
+                        >
+                          <span className={filters.type !== 'all' ? 'text-[#1F1410]' : 'text-[#1F1410]/60'}>
+                            {filterTypes.find(t => t.id === filters.type)?.label || 'All'}
+                          </span>
+                          <ChevronDown className="w-4 h-4 text-[#1F1410]/40" />
+                        </button>
+
+                        {showTypeDropdown && (
+                          <div
+                            className="absolute top-full left-0 mt-2 bg-white rounded-xl border border-[#1F1410]/10 shadow-lg z-50 min-w-[140px] overflow-y-auto"
+                            onMouseLeave={() => setShowTypeDropdown(false)}
+                          >
+                            {filterTypes.map((type) => (
+                              <button
+                                key={type.id}
+                                onClick={() => {
+                                  setFilters(f => ({ ...f, type: type.id }))
+                                  setShowTypeDropdown(false)
+                                }}
+                                className={`w-full px-4 py-2 text-left text-sm hover:bg-[#1F1410]/5 transition-colors ${
+                                  filters.type === type.id ? 'text-[#8B5CF6] font-medium' : 'text-[#1F1410]'
+                                }`}
+                              >
+                                {type.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Category Filter */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-2">
+                        Category
+                      </label>
+                      <div className="relative">
+                        <button
+                          onClick={() => {
+                            setShowCategoryDropdown(!showCategoryDropdown)
+                            setShowTypeDropdown(false)
+                            setShowSourceDropdown(false)
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#1F1410]/10 text-sm hover:border-[#1F1410]/20 transition-colors"
+                        >
+                          {selectedCategory ? (
+                            <>
+                              <div
+                                className="w-5 h-5 rounded flex items-center justify-center"
+                                style={{ backgroundColor: `${selectedCategory.color}15` }}
+                              >
+                                <selectedCategory.icon
+                                  className="w-3 h-3"
+                                  style={{ color: selectedCategory.color }}
+                                />
+                              </div>
+                              <span className="text-[#1F1410]">{selectedCategory.name}</span>
+                            </>
+                          ) : (
+                            <span className="text-[#1F1410]/60">All Categories</span>
+                          )}
+                          <ChevronDown className="w-4 h-4 text-[#1F1410]/40" />
+                        </button>
+
+                        {showCategoryDropdown && (
+                          <div
+                            className="absolute top-full left-0 mt-2 bg-white rounded-xl border border-[#1F1410]/10 shadow-lg z-50 min-w-[200px] max-h-[300px] overflow-y-auto"
+                            onMouseLeave={() => setShowCategoryDropdown(false)}
+                          >
+                            <button
+                              onClick={() => {
+                                setFilters(f => ({ ...f, categoryId: null }))
+                                setShowCategoryDropdown(false)
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-[#1F1410]/60 hover:bg-[#1F1410]/5 transition-colors"
+                            >
+                              All Categories
+                            </button>
+                            {allUiCategories.map((cat) => (
+                              <button
+                                key={cat.id}
+                                onClick={() => {
+                                  setFilters(f => ({ ...f, categoryId: cat.id }))
+                                  setShowCategoryDropdown(false)
+                                }}
+                                className="w-full flex items-center gap-2 px-4 py-2 text-left text-sm hover:bg-[#1F1410]/5 transition-colors"
+                              >
+                                <div
+                                  className="w-5 h-5 rounded flex items-center justify-center"
+                                  style={{ backgroundColor: `${cat.color}15` }}
+                                >
+                                  <cat.icon className="w-3 h-3" style={{ color: cat.color }} />
+                                </div>
+                                <span className="text-[#1F1410]">{cat.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Source Filter */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-2">
+                        Source
+                      </label>
+                      <div className="relative">
+                        <button
+                          onClick={() => {
+                            setShowSourceDropdown(!showSourceDropdown)
+                            setShowTypeDropdown(false)
+                            setShowCategoryDropdown(false)
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#1F1410]/10 text-sm hover:border-[#1F1410]/20 transition-colors"
+                        >
+                          <span className={filters.accountSource ? 'text-[#1F1410]' : 'text-[#1F1410]/60'}>
+                            {filters.accountSource || 'All Sources'}
+                          </span>
+                          <ChevronDown className="w-4 h-4 text-[#1F1410]/40" />
+                        </button>
+
+                        {showSourceDropdown && (
+                          <div
+                            className="absolute top-full left-0 mt-2 bg-white rounded-xl border border-[#1F1410]/10 shadow-lg z-50 min-w-[180px] max-h-[300px] overflow-y-auto"
+                            onMouseLeave={() => setShowSourceDropdown(false)}
+                          >
+                            <button
+                              onClick={() => {
+                                setFilters(f => ({ ...f, accountSource: null }))
+                                setShowSourceDropdown(false)
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-[#1F1410]/60 hover:bg-[#1F1410]/5 transition-colors"
+                            >
+                              All Sources
+                            </button>
+                            {accountSources.map((source) => (
+                              <button
+                                key={source}
+                                onClick={() => {
+                                  setFilters(f => ({ ...f, accountSource: source }))
+                                  setShowSourceDropdown(false)
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-[#1F1410] hover:bg-[#1F1410]/5 transition-colors"
+                              >
+                                {source}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Clear Filters */}
+                    {activeFilterCount > 0 && (
+                      <div className="flex items-end">
+                        <button
+                          onClick={() => setFilters({ type: 'all', categoryId: null, accountSource: null, searchQuery: filters.searchQuery })}
+                          className="flex items-center gap-1.5 px-3 py-2 text-sm text-[#1F1410]/50 hover:text-[#1F1410] transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                          Clear filters
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </div>
+
+            {/* Transactions List */}
             {loading ? (
               <div className="p-8 text-center">
                 <motion.div
@@ -928,6 +1078,39 @@ export function TransactionsView() {
                       </div>
                     </div>
                   )}
+
+                  {/* Splits */}
+                  {selectedTransaction.splits.length > 0 && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-[#8B5CF6]/10 flex items-center justify-center flex-shrink-0">
+                        <Split className="w-4 h-4 text-[#8B5CF6]" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs text-[#1F1410]/50 uppercase tracking-wide mb-2">Split Categories</p>
+                        <div className="space-y-2">
+                          {selectedTransaction.splits.map((split) => (
+                            <div
+                              key={split.id}
+                              className="flex items-center justify-between p-2 rounded-lg bg-[#1F1410]/[0.02]"
+                            >
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="w-2 h-2 rounded-full"
+                                  style={{ backgroundColor: split.color }}
+                                />
+                                <span className="text-sm text-[#1F1410]">
+                                  {split.category || 'Uncategorized'}
+                                </span>
+                              </div>
+                              <span className="text-sm font-medium text-[#1F1410]">
+                                ${Math.abs(split.amount).toFixed(2)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Action Buttons */}
@@ -938,6 +1121,13 @@ export function TransactionsView() {
                   >
                     <Pencil className="w-3.5 h-3.5" />
                     Edit
+                  </button>
+                  <button
+                    onClick={() => setIsSplitModalOpen(true)}
+                    className="flex items-center gap-1.5 text-sm text-[#1F1410]/50 hover:text-[#8B5CF6] transition-colors"
+                  >
+                    <Split className="w-3.5 h-3.5" />
+                    {selectedTransaction.splits.length > 0 ? 'Edit Split' : 'Split'}
                   </button>
                   <button
                     onClick={handleDeleteSelectedTransaction}
@@ -970,6 +1160,25 @@ export function TransactionsView() {
         defaultDate={new Date().toISOString().split('T')[0]}
         editTransaction={editingTransaction}
       />
+
+      {/* Split Transaction Modal */}
+      {selectedTransaction && (
+        <SplitTransactionModal
+          isOpen={isSplitModalOpen}
+          onClose={() => setIsSplitModalOpen(false)}
+          onSave={handleSaveSplits}
+          transactionAmount={selectedTransaction.amount}
+          transactionMerchant={selectedTransaction.merchant}
+          categories={allUiCategories}
+          existingSplits={selectedTransaction.splits.map(s => ({
+            id: s.id,
+            amount: Math.abs(s.amount),
+            category_id: s.category_id,
+            category_name: s.category,
+            notes: s.notes,
+          }))}
+        />
+      )}
     </div>
   )
 }

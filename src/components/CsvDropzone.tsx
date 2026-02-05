@@ -104,10 +104,10 @@ export function CsvDropzone({ onFilesAdded }: CsvDropzoneProps) {
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
-            className="flex items-center gap-2"
+            className="flex items-center gap-1.5"
+            title="Import CSV"
           >
             <Upload className="w-4 h-4" />
-            <span>Import CSV</span>
           </motion.div>
         )
     }
@@ -123,17 +123,15 @@ export function CsvDropzone({ onFilesAdded }: CsvDropzoneProps) {
         className="hidden"
       />
 
-      <motion.button
+      <button
         onClick={handleClick}
-        whileHover={status === 'idle' ? { scale: 1.02 } : {}}
-        whileTap={status === 'idle' ? { scale: 0.98 } : {}}
         disabled={status === 'loading'}
-        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#FF6B6B]/10 text-[#FF6B6B] font-medium text-sm transition-colors hover:bg-[#FF6B6B]/15 disabled:cursor-not-allowed"
+        className="flex items-center gap-1.5 px-2 py-2 text-sm text-[#1F1410]/40 hover:text-[#1F1410]/70 transition-colors disabled:cursor-not-allowed"
       >
         <AnimatePresence mode="wait">
           {getButtonContent()}
         </AnimatePresence>
-      </motion.button>
+      </button>
     </div>
   )
 }
