@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LucideIcon, ChevronDown } from 'lucide-react'
+import { LucideIcon, ChevronDown, X } from 'lucide-react'
 
 type CategoryWithBudget = {
   id: string
@@ -15,6 +15,8 @@ type CategoryWithBudget = {
 
 type CategoryProgressListProps = {
   categories: CategoryWithBudget[]
+  selectedCategoryId?: string | null
+  onCategorySelect?: (categoryId: string | null) => void
 }
 
 type ParentGroup = {
@@ -26,22 +28,37 @@ type CategoryGroupProps = {
   parent: CategoryWithBudget
   children: CategoryWithBudget[]
   defaultExpanded?: boolean
+  selectedCategoryId?: string | null
+  onCategorySelect?: (categoryId: string | null) => void
 }
 
-function CategoryGroup({ parent, children, defaultExpanded = true }: CategoryGroupProps) {
+function CategoryGroup({ parent, children, defaultExpanded = true, selectedCategoryId, onCategorySelect }: CategoryGroupProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
 
-  // Calculate totals including parent and all children
-  const allCategories = [parent, ...children]
+  const isParentSelected = selectedCategoryId === parent.id
+
+  // Filter children to only those with activity (for consistent counting and rendering)
+  const activeChildren = useMemo(() =>
+    children.filter(child => child.total > 0 || child.budget > 0),
+    [children]
+  )
+
+  // Calculate totals - when parent has children, use only children totals
+  // (parent categories with children act as containers, not budget items)
+  const hasActiveChildren = activeChildren.length > 0
 
   const groupTotal = useMemo(() =>
-    allCategories.reduce((sum, cat) => sum + cat.total, 0),
-    [allCategories]
+    hasActiveChildren
+      ? activeChildren.reduce((sum, cat) => sum + cat.total, 0)
+      : parent.total,
+    [hasActiveChildren, activeChildren, parent.total]
   )
 
   const groupBudget = useMemo(() =>
-    allCategories.reduce((sum, cat) => sum + cat.budget, 0),
-    [allCategories]
+    hasActiveChildren
+      ? activeChildren.reduce((sum, cat) => sum + cat.budget, 0)
+      : parent.budget,
+    [hasActiveChildren, activeChildren, parent.budget]
   )
 
   const groupPercentage = groupBudget > 0 ? (groupTotal / groupBudget) * 100 : 0
@@ -55,11 +72,14 @@ function CategoryGroup({ parent, children, defaultExpanded = true }: CategoryGro
   return (
     <div className="mb-4">
       {/* Group Header - Parent Category */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-[#1F1410]/3 transition-colors group"
+      <div
+        className="w-full flex items-center justify-between p-3 rounded-xl transition-all"
       >
-        <div className="flex items-center gap-3">
+        {/* Left side: Icon + Name - clickable for filtering */}
+        <div
+          className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={() => onCategorySelect?.(isParentSelected ? null : parent.id)}
+        >
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center"
             style={{ backgroundColor: `${parent.color}15` }}
@@ -68,12 +88,11 @@ function CategoryGroup({ parent, children, defaultExpanded = true }: CategoryGro
           </div>
           <div className="text-left">
             <p className="text-sm font-bold text-[#1F1410]">{parent.name}</p>
-            <p className="text-xs text-[#1F1410]/40">
-              {children.length > 0
-                ? `${children.length} ${children.length === 1 ? 'subcategory' : 'subcategories'}`
-                : 'No subcategories'
-              }
-            </p>
+            {hasActiveChildren && (
+              <p className="text-xs text-[#1F1410]/40">
+                {activeChildren.length} {activeChildren.length === 1 ? 'subcategory' : 'subcategories'}
+              </p>
+            )}
           </div>
         </div>
 
@@ -94,14 +113,26 @@ function CategoryGroup({ parent, children, defaultExpanded = true }: CategoryGro
               <p className="text-xs text-[#1F1410]/40">of ${groupBudget.toLocaleString()}</p>
             )}
           </div>
-          <motion.div
-            animate={{ rotate: isExpanded ? 180 : 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <ChevronDown className="w-5 h-5 text-[#1F1410]/40 group-hover:text-[#1F1410]/60 transition-colors" />
-          </motion.div>
+          {/* Chevron button - separate click target for expand/collapse */}
+          {hasActiveChildren && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsExpanded(!isExpanded)
+              }}
+              className="p-1 -m-1 rounded-md hover:bg-[#1F1410]/5 transition-colors"
+              aria-label={isExpanded ? 'Collapse subcategories' : 'Expand subcategories'}
+            >
+              <motion.div
+                animate={{ rotate: isExpanded ? 180 : 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ChevronDown className="w-5 h-5 text-[#1F1410]/40 hover:text-[#1F1410]/60 transition-colors" />
+              </motion.div>
+            </button>
+          )}
         </div>
-      </button>
+      </div>
 
       {/* Group Progress Bar */}
       {groupBudget > 0 && (
@@ -118,7 +149,7 @@ function CategoryGroup({ parent, children, defaultExpanded = true }: CategoryGro
 
       {/* Child Categories List */}
       <AnimatePresence initial={false}>
-        {isExpanded && children.length > 0 && (
+        {isExpanded && activeChildren.length > 0 && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -127,7 +158,7 @@ function CategoryGroup({ parent, children, defaultExpanded = true }: CategoryGro
             className="overflow-hidden"
           >
             <div className="pl-4 pr-1 space-y-3 pt-2">
-              {children.map((category, index) => {
+              {activeChildren.map((category, index) => {
                 const IconComponent = category.icon
                 const percentage = category.budget > 0
                   ? (category.total / category.budget) * 100
@@ -136,8 +167,7 @@ function CategoryGroup({ parent, children, defaultExpanded = true }: CategoryGro
                 const remaining = category.budget - category.total
                 const displayColor = isCategoryOverBudget ? '#FF6B6B' : category.color
 
-                // Skip children with no activity
-                if (category.total === 0 && category.budget === 0) return null
+                const isSelected = selectedCategoryId === category.id
 
                 return (
                   <motion.div
@@ -145,7 +175,13 @@ function CategoryGroup({ parent, children, defaultExpanded = true }: CategoryGro
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.05 + index * 0.03, duration: 0.2 }}
-                    className="group cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (onCategorySelect) {
+                        onCategorySelect(isSelected ? null : category.id)
+                      }
+                    }}
+                    className="group cursor-pointer p-2 -mx-2 rounded-lg transition-all hover:bg-[#1F1410]/3"
                   >
                     <div className="flex items-center justify-between mb-1.5">
                       {/* Left section: Icon + Category info */}
@@ -237,7 +273,7 @@ function CategoryGroup({ parent, children, defaultExpanded = true }: CategoryGro
   )
 }
 
-export function CategoryProgressList({ categories }: CategoryProgressListProps) {
+export function CategoryProgressList({ categories, selectedCategoryId, onCategorySelect }: CategoryProgressListProps) {
   // Organize categories into parent-child hierarchy
   const parentGroups = useMemo((): ParentGroup[] => {
     // Separate parents (no parent_id) and children (has parent_id)
@@ -276,6 +312,17 @@ export function CategoryProgressList({ categories }: CategoryProgressListProps) 
       className="bg-white rounded-2xl p-5 shadow-sm"
       style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
     >
+      {/* Clear Filter Button */}
+      {selectedCategoryId && onCategorySelect && (
+        <button
+          onClick={() => onCategorySelect(null)}
+          className="w-full flex items-center justify-center gap-2 mb-4 py-2 px-3 rounded-lg text-sm font-medium text-[#1F1410]/70 hover:text-[#1F1410] bg-[#1F1410]/5 hover:bg-[#1F1410]/10 transition-colors"
+        >
+          <X className="w-4 h-4" />
+          Clear filter
+        </button>
+      )}
+
       {parentGroups.length === 0 ? (
         <p className="text-sm text-[#1F1410]/40 text-center py-4">
           No spending recorded yet
@@ -287,6 +334,8 @@ export function CategoryProgressList({ categories }: CategoryProgressListProps) 
             parent={group.parent}
             children={group.children}
             defaultExpanded={true}
+            selectedCategoryId={selectedCategoryId}
+            onCategorySelect={onCategorySelect}
           />
         ))
       )}
