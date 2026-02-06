@@ -111,6 +111,15 @@ export function TransactionFeed() {
     }
   }, [dbCategories, findCategoryByName])
 
+  // Category IDs to exclude from expenses (income, transfers, credit card payments)
+  const excludedCategoryIds = useMemo(() => {
+    return new Set(
+      dbCategories
+        .filter(c => c.category_type === 'income' || c.category_type === 'transfer')
+        .map(c => c.id)
+    )
+  }, [dbCategories])
+
   // Fetch transactions from Supabase for selected month
   const fetchTransactions = useCallback(async () => {
     setLoading(true)
@@ -126,11 +135,14 @@ export function TransactionFeed() {
     if (error) {
       console.error('Error fetching transactions:', error)
     } else if (data) {
-      const uiTransactions = (data as DBTransaction[]).map(mapDBToUI)
+      const filtered = (data as DBTransaction[]).filter(
+        tx => !tx.category_id || !excludedCategoryIds.has(tx.category_id)
+      )
+      const uiTransactions = filtered.map(mapDBToUI)
       setTransactions(uiTransactions)
     }
     setLoading(false)
-  }, [mapDBToUI, selectedMonth])
+  }, [mapDBToUI, selectedMonth, excludedCategoryIds])
 
   // Paystubs for expected income calculation
   const [allPaystubs, setAllPaystubs] = useState<{ pay_date: string; net_pay: number }[]>([])
