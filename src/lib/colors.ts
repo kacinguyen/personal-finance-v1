@@ -35,11 +35,22 @@ export const CHART_COLORS = {
 // Navigation/tab colors
 export const TAB_COLORS = {
   dashboard: '#F59E0B',
+  transactions: '#8B5CF6',
   income: '#10B981',
   expenses: '#FF6B6B',
   savings: '#38BDF8',
   budget: '#6366F1',
+  accounts: '#14B8A6',
   profile: '#A855F7',
+} as const
+
+// Account group colors
+export const ACCOUNT_GROUP_COLORS = {
+  cash: '#10B981',     // Emerald
+  credit: '#EF4444',   // Red
+  investment: '#6366F1', // Indigo
+  loan: '#F59E0B',     // Amber
+  retirement: '#A855F7', // Purple
 } as const
 
 // Available colors for category/goal creation

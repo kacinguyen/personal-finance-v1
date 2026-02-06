@@ -245,28 +245,21 @@ export function DashboardView() {
           transition={{ duration: 0.5 }}
           className="mb-8"
         >
-          <div className="flex items-center gap-3 mb-2">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
-              className="w-12 h-12 rounded-xl bg-[#F59E0B]/10 flex items-center justify-center"
-            >
-              <LayoutDashboard className="w-6 h-6" style={{ color: TAB_COLORS.dashboard }} />
-            </motion.div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Dashboard</h1>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
+                className="w-12 h-12 rounded-xl bg-[#F59E0B]/10 flex items-center justify-center"
+              >
+                <LayoutDashboard className="w-6 h-6" style={{ color: TAB_COLORS.dashboard }} />
+              </motion.div>
+              <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Dashboard</h1>
+            </div>
+            <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </div>
           <p className="text-[#1F1410]/60 text-lg">Your financial overview</p>
-        </motion.div>
-
-        {/* Month Selector */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.3 }}
-          className="flex justify-center mb-6"
-        >
-          <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
         </motion.div>
 
         {/* Key Metrics Grid */}

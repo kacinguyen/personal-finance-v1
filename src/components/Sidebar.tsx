@@ -1,16 +1,18 @@
 import { motion } from 'framer-motion'
 import {
   LayoutDashboard,
+  ArrowLeftRight,
   TrendingUp,
   Receipt,
   PiggyBank,
   Target,
+  Landmark,
 } from 'lucide-react'
 import { useUser } from '../hooks/useUser'
 import { TAB_COLORS } from '../lib/colors'
 import { SHADOWS } from '../lib/styles'
 
-type Tab = 'dashboard' | 'income' | 'expenses' | 'savings' | 'budget' | 'profile'
+type Tab = 'dashboard' | 'transactions' | 'income' | 'expenses' | 'savings' | 'budget' | 'accounts' | 'profile'
 
 type SidebarProps = {
   activeTab: Tab
@@ -25,6 +27,12 @@ const tabs = [
     color: TAB_COLORS.dashboard,
   },
   {
+    id: 'transactions' as Tab,
+    label: 'Transactions',
+    icon: ArrowLeftRight,
+    color: TAB_COLORS.transactions,
+  },
+  {
     id: 'income' as Tab,
     label: 'Income',
     icon: TrendingUp,
@@ -37,16 +45,22 @@ const tabs = [
     color: TAB_COLORS.expenses,
   },
   {
-    id: 'savings' as Tab,
-    label: 'Savings',
-    icon: PiggyBank,
-    color: TAB_COLORS.savings,
-  },
-  {
     id: 'budget' as Tab,
     label: 'Budget',
     icon: Target,
     color: TAB_COLORS.budget,
+  },
+  {
+    id: 'accounts' as Tab,
+    label: 'Accounts',
+    icon: Landmark,
+    color: TAB_COLORS.accounts,
+  },
+  {
+    id: 'savings' as Tab,
+    label: 'Savings',
+    icon: PiggyBank,
+    color: TAB_COLORS.savings,
   },
 ]
 

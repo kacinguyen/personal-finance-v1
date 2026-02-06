@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
 import {
   ArrowLeftRight,
@@ -21,10 +21,10 @@ import {
   SlidersHorizontal,
   X,
   Split,
+  Upload,
 } from 'lucide-react'
 import { TransactionItem } from './TransactionItem'
 import { UICategory, dbCategoryToUI } from './CategoryDropdown'
-import { CsvDropzone } from './CsvDropzone'
 import { AddTransactionModal, TransactionFormData } from './AddTransactionModal'
 import { SplitTransactionModal } from './SplitTransactionModal'
 import { importCSVFiles } from '../lib/csvImport'
@@ -121,6 +121,8 @@ export function TransactionsView() {
   const [showSourceDropdown, setShowSourceDropdown] = useState(false)
   const [showFiltersPanel, setShowFiltersPanel] = useState(false)
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false)
+  const [showAddDropdown, setShowAddDropdown] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Convert DB categories to UI categories with resolved icons (all categories for filtering)
   const allUiCategories = useMemo<UICategory[]>(() => {
@@ -530,26 +532,19 @@ export function TransactionsView() {
           transition={{ duration: 0.5 }}
           className="mb-8"
         >
-          <div className="flex items-center gap-3 mb-2">
-            <motion.div
-              animate={{ rotate: [0, 15, -15, 0] }}
-              transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
-            >
-              <ArrowLeftRight className="w-8 h-8" style={{ color: TAB_COLORS.transactions }} />
-            </motion.div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Transactions</h1>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <motion.div
+                animate={{ rotate: [0, 15, -15, 0] }}
+                transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+              >
+                <ArrowLeftRight className="w-8 h-8" style={{ color: TAB_COLORS.transactions }} />
+              </motion.div>
+              <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Transactions</h1>
+            </div>
+            <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </div>
           <p className="text-[#1F1410]/60 text-lg">Manage all your financial transactions</p>
-        </motion.div>
-
-        {/* Month Selector */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, duration: 0.3 }}
-          className="flex justify-center mb-6"
-        >
-          <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
         </motion.div>
 
         {/* Stats Cards */}
@@ -674,18 +669,63 @@ export function TransactionsView() {
                   )}
                 </button>
 
-                {/* Action Buttons */}
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleAddNewTransaction}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
-                  style={{ backgroundColor: TAB_COLORS.transactions }}
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add</span>
-                </motion.button>
-                <CsvDropzone onFilesAdded={handleCsvImport} />
+                {/* Add Button with Dropdown */}
+                <div className="relative">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setShowAddDropdown(!showAddDropdown)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+                    style={{ backgroundColor: TAB_COLORS.transactions }}
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add</span>
+                    <ChevronDown className="w-3.5 h-3.5 ml-0.5" />
+                  </motion.button>
+
+                  {showAddDropdown && (
+                    <div
+                      className="absolute top-full right-0 mt-2 bg-white rounded-xl border border-[#1F1410]/10 shadow-lg z-50 min-w-[160px] overflow-hidden"
+                      onMouseLeave={() => setShowAddDropdown(false)}
+                    >
+                      <button
+                        onClick={() => {
+                          handleAddNewTransaction()
+                          setShowAddDropdown(false)
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-[#1F1410]/5 transition-colors text-[#1F1410]"
+                      >
+                        <Plus className="w-4 h-4 text-[#1F1410]/50" />
+                        Manual Add
+                      </button>
+                      <button
+                        onClick={() => {
+                          fileInputRef.current?.click()
+                          setShowAddDropdown(false)
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-[#1F1410]/5 transition-colors text-[#1F1410]"
+                      >
+                        <Upload className="w-4 h-4 text-[#1F1410]/50" />
+                        Import CSV
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Hidden file input for CSV import */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        handleCsvImport(Array.from(e.target.files))
+                        e.target.value = ''
+                      }
+                    }}
+                  />
+                </div>
               </div>
 
               {/* Expanded Filters Panel */}

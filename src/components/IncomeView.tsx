@@ -6,7 +6,6 @@ import {
   Building2,
   TrendingDown,
   DollarSign,
-  Plus,
   Briefcase,
   LucideIcon,
   Loader2,
@@ -49,11 +48,6 @@ type IncomeSource = {
   color: string
 }
 
-type ConnectedBank = {
-  name: string
-  lastSync: string
-  accountType: string
-}
 
 export function IncomeView() {
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -77,10 +71,6 @@ export function IncomeView() {
   const [paystubs, setPaystubs] = useState<PaystubRecord[]>([])
   const [loadingPaystubs, setLoadingPaystubs] = useState(true)
 
-  const connectedBanks: ConnectedBank[] = [
-    { name: 'Chase Checking', lastSync: '2 hours ago', accountType: 'Checking' },
-    { name: 'Wells Fargo Savings', lastSync: '1 day ago', accountType: 'Savings' },
-  ]
 
   // Fetch paystubs from database
   const fetchPaystubs = useCallback(async () => {
@@ -297,10 +287,6 @@ export function IncomeView() {
     fetchPaystubs()
   }
 
-  const handleBankIntegration = () => {
-    console.log('Connect bank account')
-  }
-
   const handleUploadDocument = () => {
     fileInputRef.current?.click()
   }
@@ -315,28 +301,21 @@ export function IncomeView() {
           transition={{ duration: 0.5 }}
           className="mb-8"
         >
-          <div className="flex items-center gap-3 mb-2">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
-              className="w-12 h-12 rounded-xl bg-[#10B981]/10 flex items-center justify-center"
-            >
-              <TrendingUp className="w-6 h-6 text-[#10B981]" />
-            </motion.div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Income</h1>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
+                className="w-12 h-12 rounded-xl bg-[#10B981]/10 flex items-center justify-center"
+              >
+                <TrendingUp className="w-6 h-6 text-[#10B981]" />
+              </motion.div>
+              <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Income</h1>
+            </div>
+            <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </div>
           <p className="text-[#1F1410]/60 text-lg">Track your earnings and revenue streams</p>
-        </motion.div>
-
-        {/* Month Selector */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.3 }}
-          className="flex justify-center mb-6"
-        >
-          <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
         </motion.div>
 
         {/* Two Column Layout */}
@@ -466,70 +445,32 @@ export function IncomeView() {
               className="bg-white rounded-xl p-5 shadow-sm"
               style={{ boxShadow: '0 2px 8px rgba(31, 20, 16, 0.04)' }}
             >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Connected Banks */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-[#1F1410]/70">Connected Banks</h3>
-                    <button
-                      onClick={handleBankIntegration}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[#10B981] hover:bg-[#10B981]/5 transition-colors"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Bank</span>
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {connectedBanks.map((bank, index) => (
-                      <motion.div
-                        key={bank.name}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.9 + index * 0.05 }}
-                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-[#1F1410]/5 transition-colors"
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
-                          <Building2 className="w-4 h-4 text-[#10B981]" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-[#1F1410] truncate">{bank.name}</p>
-                          <p className="text-xs text-[#1F1410]/40">Synced {bank.lastSync}</p>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Paychecks */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-[#1F1410]/70">Paychecks</h3>
-                    <button
-                      onClick={handleUploadDocument}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[#10B981] hover:bg-[#10B981]/5 transition-colors"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Upload Paycheck</span>
-                    </button>
-                  </div>
-                  <motion.div
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.95 }}
-                    className="flex items-center gap-3 p-2 rounded-lg"
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
-                      <FileText className="w-4 h-4 text-[#10B981]" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-[#1F1410]">
-                        {loadingPaystubs ? '...' : paystubs.length} {paystubs.length === 1 ? 'paycheck' : 'paychecks'}
-                      </p>
-                      <p className="text-xs text-[#1F1410]/40">Uploaded salary documents</p>
-                    </div>
-                  </motion.div>
-                </div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-[#1F1410]/70">Paychecks</h3>
+                <button
+                  onClick={handleUploadDocument}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[#10B981] hover:bg-[#10B981]/5 transition-colors"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Paycheck</span>
+                </button>
               </div>
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.95 }}
+                className="flex items-center gap-3 p-2 rounded-lg"
+              >
+                <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center flex-shrink-0">
+                  <FileText className="w-4 h-4 text-[#10B981]" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-[#1F1410]">
+                    {loadingPaystubs ? '...' : paystubs.length} {paystubs.length === 1 ? 'paycheck' : 'paychecks'}
+                  </p>
+                  <p className="text-xs text-[#1F1410]/40">Uploaded salary documents</p>
+                </div>
+              </motion.div>
 
               <input
                 ref={fileInputRef}
