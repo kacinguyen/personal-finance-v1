@@ -10,17 +10,17 @@ import {
   CircleDollarSign,
   ChevronLeft,
   ChevronRight,
-  Plus,
+  X,
 } from 'lucide-react'
 import { CategoryProgressList } from './CategoryProgressList'
-import { TransactionItem } from './TransactionItem'
+import { ReadOnlyTransactionItem } from './ReadOnlyTransactionItem'
 import { UICategory, dbCategoryToUI } from './CategoryDropdown'
 import { CsvDropzone } from './CsvDropzone'
-import { AddTransactionModal, TransactionFormData } from './AddTransactionModal'
 import { importCSVFiles } from '../lib/csvImport'
 import { supabase } from '../lib/supabase'
 import { getIcon, DEFAULT_COLOR } from '../lib/iconMap'
 import { useCategories } from '../hooks/useCategories'
+import { STATUS_COLORS } from '../lib/colors'
 import { MonthPicker, getMonthRange, getMonthData } from './MonthPicker'
 import type { Transaction as DBTransaction } from '../types/transaction'
 import { useUser } from '../hooks/useUser'
@@ -76,8 +76,7 @@ export function TransactionFeed() {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), 1)
   })
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
-  const [editingTransaction, setEditingTransaction] = useState<TransactionFormData | null>(null)
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
 
   // Convert DB categories to UI categories with resolved icons
   const uiCategories = useMemo<UICategory[]>(() => {
@@ -250,22 +249,45 @@ export function TransactionFeed() {
     }))
   }, [uiCategories, transactions, budgets])
 
+  // Helper to get child category IDs for a parent category
+  const getChildCategoryIds = useCallback((parentId: string): string[] => {
+    return dbCategories
+      .filter(c => c.parent_id === parentId)
+      .map(c => c.id)
+  }, [dbCategories])
+
+  // Filter transactions by selected category (includes children for parent categories)
+  const filteredTransactions = useMemo(() => {
+    if (!selectedCategoryId) return transactions
+    const childIds = getChildCategoryIds(selectedCategoryId)
+    const categoryIdsToMatch = [selectedCategoryId, ...childIds]
+    return transactions.filter(t =>
+      t.category_id && categoryIdsToMatch.includes(t.category_id)
+    )
+  }, [transactions, selectedCategoryId, getChildCategoryIds])
+
+  // Get selected category info for display
+  const selectedCategory = useMemo(() => {
+    if (!selectedCategoryId) return null
+    return categoriesWithTotals.find(c => c.id === selectedCategoryId) || null
+  }, [selectedCategoryId, categoriesWithTotals])
+
   const totalSpent = useMemo(
     () => transactions.reduce((sum, t) => sum + t.amount, 0),
     [transactions]
   )
 
-  // Pagination
-  const totalPages = Math.ceil(transactions.length / ITEMS_PER_PAGE)
+  // Pagination - uses filtered transactions when a category is selected
+  const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE)
   const paginatedTransactions = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
-    return transactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-  }, [transactions, currentPage])
+    return filteredTransactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  }, [filteredTransactions, currentPage])
 
-  // Reset to page 1 when transactions change (e.g., after import)
+  // Reset to page 1 when transactions change (e.g., after import) or filter changes
   useEffect(() => {
     setCurrentPage(1)
-  }, [transactions.length])
+  }, [transactions.length, selectedCategoryId])
 
   const budgetTracking = useMemo(() => {
     const totalBudget = categoriesWithTotals.reduce((sum, cat) => sum + cat.budget, 0)
@@ -275,26 +297,36 @@ export function TransactionFeed() {
     const remainingIncome = expectedIncome - totalSpent
     const percentageOfIncome = expectedIncome > 0 ? (totalSpent / expectedIncome) * 100 : 0
 
-    let status: 'under' | 'on-track' | 'over'
+    let status: 'neutral' | 'under' | 'on-track' | 'trending-over' | 'over'
     let statusColor: string
     let statusText: string
+    let statusDescription: string
 
-    if (totalBudget === 0) {
-      status = 'on-track'
-      statusColor = '#F59E0B'
-      statusText = 'No budget set'
+    if (totalBudget === 0 || monthData.daysElapsed === 0) {
+      status = 'neutral'
+      statusColor = STATUS_COLORS.warning
+      statusText = totalBudget === 0 ? 'No budget set' : 'Month hasn\'t started'
+      statusDescription = totalBudget === 0 ? 'Set a budget to track spending' : ''
+    } else if (totalSpent > totalBudget) {
+      status = 'over'
+      statusColor = STATUS_COLORS.error
+      statusText = 'Over Budget'
+      statusDescription = `Exceeded budget by $${Math.round(totalSpent - totalBudget).toLocaleString()}`
+    } else if (difference > totalBudget * 0.1) {
+      status = 'trending-over'
+      statusColor = STATUS_COLORS.warning
+      statusText = 'Trending Over'
+      statusDescription = `Spending pace is $${Math.round(difference).toLocaleString()} ahead`
     } else if (difference < -totalBudget * 0.1) {
       status = 'under'
-      statusColor = '#10B981'
-      statusText = 'Under budget'
-    } else if (difference > totalBudget * 0.1) {
-      status = 'over'
-      statusColor = '#FF6B6B'
-      statusText = 'Over budget'
+      statusColor = STATUS_COLORS.success
+      statusText = 'Under Budget'
+      statusDescription = `Spending pace is $${Math.round(Math.abs(difference)).toLocaleString()} behind`
     } else {
       status = 'on-track'
-      statusColor = '#F59E0B'
-      statusText = 'On track'
+      statusColor = STATUS_COLORS.success
+      statusText = 'On Track'
+      statusDescription = 'Spending is within expected range'
     }
 
     return {
@@ -307,6 +339,7 @@ export function TransactionFeed() {
       status,
       statusColor,
       statusText,
+      statusDescription,
     }
   }, [categoriesWithTotals, totalSpent, monthData, expectedIncome])
 
@@ -317,106 +350,7 @@ export function TransactionFeed() {
     }
     const count = await importCSVFiles(files, userId)
     console.log(`Imported ${count} transactions`)
-    // Refresh transactions from Supabase after import
     await fetchTransactions()
-  }
-
-  const handleSaveTransaction = async (transaction: TransactionFormData) => {
-    if (!userId) {
-      throw new Error('User not authenticated')
-    }
-
-    if (transaction.id) {
-      // Update existing transaction
-      const { error } = await supabase
-        .from('transactions')
-        .update({
-          merchant: transaction.merchant,
-          amount: -transaction.amount, // Store as negative for expenses
-          date: transaction.date,
-          category: transaction.category?.name || null,
-          category_id: transaction.category?.id || null,
-          tags: transaction.tags,
-          notes: transaction.notes,
-        })
-        .eq('id', transaction.id)
-
-      if (error) {
-        console.error('Error updating transaction:', error)
-        throw new Error('Failed to update transaction')
-      }
-    } else {
-      // Insert new transaction
-      const { error } = await supabase.from('transactions').insert({
-        user_id: userId,
-        merchant: transaction.merchant,
-        amount: -transaction.amount, // Store as negative for expenses
-        date: transaction.date,
-        category: transaction.category?.name || null,
-        category_id: transaction.category?.id || null,
-        source: 'manual',
-        source_name: 'Manual Entry',
-        pending: false,
-        tags: transaction.tags,
-        notes: transaction.notes,
-        plaid_transaction_id: null,
-        plaid_account_id: null,
-        plaid_category: null,
-        plaid_category_id: null,
-        payment_channel: null,
-      })
-
-      if (error) {
-        console.error('Error adding transaction:', error)
-        throw new Error('Failed to save transaction')
-      }
-    }
-
-    // Refresh transactions
-    await fetchTransactions()
-  }
-
-  const handleDeleteTransaction = async (transactionId: string) => {
-    const { error } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('id', transactionId)
-
-    if (error) {
-      console.error('Error deleting transaction:', error)
-      throw new Error('Failed to delete transaction')
-    }
-
-    // Refresh transactions
-    await fetchTransactions()
-  }
-
-  const handleTransactionClick = (transaction: UITransaction) => {
-    // Find the category from uiCategories to get the full UICategory object
-    const category = transaction.category_id
-      ? uiCategories.find(c => c.id === transaction.category_id) || null
-      : null
-
-    setEditingTransaction({
-      id: transaction.id,
-      merchant: transaction.merchant,
-      amount: transaction.amount,
-      date: transaction.rawDate,
-      category,
-      tags: transaction.tags,
-      notes: transaction.notes,
-    })
-    setIsAddModalOpen(true)
-  }
-
-  const handleAddNewTransaction = () => {
-    setEditingTransaction(null)
-    setIsAddModalOpen(true)
-  }
-
-  const handleModalClose = () => {
-    setIsAddModalOpen(false)
-    setEditingTransaction(null)
   }
 
   return (
@@ -429,11 +363,14 @@ export function TransactionFeed() {
           transition={{ duration: 0.5 }}
           className="mb-8"
         >
-          <div className="flex items-center gap-3 mb-2">
-            <motion.div animate={{ rotate: [0, 15, -15, 0] }} transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}>
-              <Sparkles className="w-8 h-8 text-[#F59E0B]" />
-            </motion.div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Your Spending</h1>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <motion.div animate={{ rotate: [0, 15, -15, 0] }} transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}>
+                <Sparkles className="w-8 h-8 text-[#F59E0B]" />
+              </motion.div>
+              <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Your Spending</h1>
+            </div>
+            <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </div>
           <p className="text-[#1F1410]/60 text-lg">
             <span className="font-semibold text-[#1F1410]">
@@ -441,16 +378,6 @@ export function TransactionFeed() {
             </span>{' '}
             spent {monthData.isCurrentMonth ? 'so far' : 'total'}
           </p>
-        </motion.div>
-
-        {/* Month Selector */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, duration: 0.3 }}
-          className="flex justify-center mb-6"
-        >
-          <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
         </motion.div>
 
         {/* Budget Tracking Insight */}
@@ -512,7 +439,7 @@ export function TransactionFeed() {
                     animate={{ scale: 1 }}
                     transition={{ type: 'spring', stiffness: 300, damping: 20, delay: 0.4 }}
                   >
-                    {budgetTracking.status === 'under' ? (
+                    {budgetTracking.status === 'under' || budgetTracking.status === 'on-track' ? (
                       <TrendingDown className="w-5 h-5" style={{ color: budgetTracking.statusColor }} />
                     ) : (
                       <TrendingUp className="w-5 h-5" style={{ color: budgetTracking.statusColor }} />
@@ -522,6 +449,9 @@ export function TransactionFeed() {
                     {budgetTracking.statusText}
                   </span>
                 </div>
+                {budgetTracking.statusDescription && (
+                  <p className="text-xs text-[#1F1410]/40 mt-0.5">{budgetTracking.statusDescription}</p>
+                )}
               </div>
               <motion.div
                 initial={{ scale: 0 }}
@@ -537,7 +467,31 @@ export function TransactionFeed() {
             </div>
           </div>
 
-          {/* Progress Bar */}
+          {/* Spent vs Budget Progress */}
+          {budgetTracking.status !== 'neutral' && (
+            <div className="mt-5 pt-5 border-t border-[#1F1410]/5">
+              <div className="flex justify-between text-sm text-[#1F1410]/60 mb-2">
+                <span>Spent vs Budget</span>
+                <span className="font-semibold text-[#1F1410]">
+                  ${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} of ${budgetTracking.totalBudget.toLocaleString()}
+                </span>
+              </div>
+              <div className="h-2.5 bg-[#1F1410]/5 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min(budgetTracking.percentageOfBudget, 100)}%` }}
+                  transition={{ duration: 0.8, delay: 0.5, ease: 'easeOut' }}
+                  className="h-full rounded-full"
+                  style={{ backgroundColor: budgetTracking.statusColor }}
+                />
+              </div>
+              <p className="text-xs text-[#1F1410]/40 mt-2">
+                Day {monthData.daysElapsed} of {monthData.daysInMonth} — expected ~${Math.round(budgetTracking.expectedSpending).toLocaleString()} spent by now
+              </p>
+            </div>
+          )}
+
+          {/* Income Progress Bar */}
           <div className="mt-4">
             <div className="flex justify-between text-xs text-[#1F1410]/40 mb-2">
               <span>
@@ -552,15 +506,25 @@ export function TransactionFeed() {
                 animate={{ width: `${Math.min(budgetTracking.percentageOfIncome, 100)}%` }}
                 transition={{ duration: 1, delay: 0.6, ease: 'easeOut' }}
                 className="h-full rounded-full"
-                style={{ backgroundColor: budgetTracking.remainingIncome > 0 ? '#10B981' : '#FF6B6B' }}
+                style={{ backgroundColor: budgetTracking.remainingIncome > 0 ? STATUS_COLORS.success : STATUS_COLORS.error }}
               />
             </div>
           </div>
         </motion.div>
 
-        {/* Two Column Layout: Transactions (Left) and Budgets (Right) */}
+        {/* Two Column Layout: Budgets (Left) and Transactions (Right) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Transactions Section - Left Column (2/3 width on large screens) */}
+          {/* Category Budgets Progress List - Left Column (1/3 width on large screens) */}
+          <div className="lg:col-span-1">
+            <h2 className="text-xl font-bold text-[#1F1410] mb-4 px-1">Category Budgets</h2>
+            <CategoryProgressList
+              categories={categoriesWithTotals}
+              selectedCategoryId={selectedCategoryId}
+              onCategorySelect={setSelectedCategoryId}
+            />
+          </div>
+
+          {/* Transactions Section - Right Column (2/3 width on large screens) */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -568,19 +532,21 @@ export function TransactionFeed() {
             className="lg:col-span-2"
           >
             <div className="flex items-center justify-between mb-4 px-1">
-              <h2 className="text-xl font-bold text-[#1F1410]">Recent Transactions</h2>
               <div className="flex items-center gap-2">
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleAddNewTransaction}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-[#F59E0B] hover:bg-[#F59E0B]/10 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add</span>
-                </motion.button>
-                <CsvDropzone onFilesAdded={handleCsvImport} />
+                <h2 className="text-xl font-bold text-[#1F1410]">
+                  {selectedCategory ? selectedCategory.name : 'Recent Transactions'}
+                </h2>
+                {selectedCategory && (
+                  <button
+                    onClick={() => setSelectedCategoryId(null)}
+                    className="flex items-center justify-center w-6 h-6 rounded-full bg-[#1F1410]/10 hover:bg-[#1F1410]/20 transition-colors"
+                    title="Clear filter"
+                  >
+                    <X className="w-3.5 h-3.5 text-[#1F1410]/70" />
+                  </button>
+                )}
               </div>
+              <CsvDropzone onFilesAdded={handleCsvImport} />
             </div>
             <div
               className="bg-white rounded-2xl shadow-sm overflow-hidden"
@@ -595,19 +561,32 @@ export function TransactionFeed() {
                   />
                   <p className="text-[#1F1410]/50">Loading transactions...</p>
                 </div>
-              ) : transactions.length === 0 ? (
+              ) : filteredTransactions.length === 0 ? (
                 <div className="p-8 text-center">
                   <CircleDollarSign className="w-12 h-12 text-[#1F1410]/20 mx-auto mb-3" />
-                  <p className="text-[#1F1410]/50 mb-2">No transactions yet</p>
-                  <p className="text-sm text-[#1F1410]/40">Import a CSV to get started</p>
+                  {selectedCategory ? (
+                    <>
+                      <p className="text-[#1F1410]/50 mb-2">No transactions in {selectedCategory.name}</p>
+                      <button
+                        onClick={() => setSelectedCategoryId(null)}
+                        className="text-sm text-[#F59E0B] hover:text-[#D97706] font-medium transition-colors"
+                      >
+                        Show all transactions
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[#1F1410]/50 mb-2">No transactions yet</p>
+                      <p className="text-sm text-[#1F1410]/40">Import a CSV to get started</p>
+                    </>
+                  )}
                 </div>
               ) : (
                 <>
                   <div className="divide-y divide-[#1F1410]/5">
                     {paginatedTransactions.map((transaction, index) => (
-                      <TransactionItem
+                      <ReadOnlyTransactionItem
                         key={transaction.id}
-                        id={transaction.id}
                         icon={transaction.icon}
                         merchant={transaction.merchant}
                         category={transaction.category}
@@ -616,7 +595,6 @@ export function TransactionFeed() {
                         color={transaction.color}
                         source={transaction.source}
                         index={index}
-                        onClick={() => handleTransactionClick(transaction)}
                       />
                     ))}
                   </div>
@@ -626,7 +604,10 @@ export function TransactionFeed() {
                     <div className="flex items-center justify-between px-6 py-4 border-t border-[#1F1410]/5">
                       <p className="text-sm text-[#1F1410]/50">
                         Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}-
-                        {Math.min(currentPage * ITEMS_PER_PAGE, transactions.length)} of {transactions.length}
+                        {Math.min(currentPage * ITEMS_PER_PAGE, filteredTransactions.length)} of {filteredTransactions.length}
+                        {selectedCategoryId && transactions.length !== filteredTransactions.length && (
+                          <span className="text-[#1F1410]/30"> ({transactions.length} total)</span>
+                        )}
                       </p>
                       <div className="flex items-center gap-2">
                         <button
@@ -655,12 +636,6 @@ export function TransactionFeed() {
               )}
             </div>
           </motion.div>
-
-          {/* Category Budgets Progress List - Right Column (1/3 width on large screens) */}
-          <div className="lg:col-span-1">
-            <h2 className="text-xl font-bold text-[#1F1410] mb-4 px-1">Category Budgets</h2>
-            <CategoryProgressList categories={categoriesWithTotals} />
-          </div>
         </div>
 
         {/* Footer */}
@@ -673,17 +648,6 @@ export function TransactionFeed() {
           Keep up the great work!
         </motion.p>
       </div>
-
-      {/* Add/Edit Transaction Modal */}
-      <AddTransactionModal
-        isOpen={isAddModalOpen}
-        onClose={handleModalClose}
-        onSave={handleSaveTransaction}
-        onDelete={handleDeleteTransaction}
-        categories={uiCategories}
-        defaultDate={new Date().toISOString().split('T')[0]}
-        editTransaction={editingTransaction}
-      />
     </div>
   )
 }
