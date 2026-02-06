@@ -168,12 +168,13 @@ export function TransactionsView() {
     const icon = category ? getIcon(category.icon) : CircleDollarSign
     const color = category?.color || DEFAULT_COLOR
 
-    // Determine transaction type
+    // Determine transaction type — check transfer category first since
+    // transfers can have positive or negative amounts
     let type: 'income' | 'expense' | 'transfer' = 'expense'
-    if (tx.amount > 0) {
-      type = 'income'
-    } else if (category?.category_type === 'transfer' || transferCategories.some(tc => tc.id === tx.category_id)) {
+    if (category?.category_type === 'transfer' || transferCategories.some(tc => tc.id === tx.category_id)) {
       type = 'transfer'
+    } else if (tx.amount > 0) {
+      type = 'income'
     }
 
     // Map splits to UI format

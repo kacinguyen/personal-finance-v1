@@ -208,6 +208,23 @@ export const DEFAULT_CATEGORIES: DefaultCategoryDef[] = [
     is_active: true,
     is_budgetable: false,
   },
+  // Transfers
+  {
+    name: 'Credit Card Payment',
+    icon: 'CreditCard',
+    color: '#8B5CF6',
+    category_type: 'transfer',
+    is_system: true,
+    is_active: true,
+  },
+  {
+    name: 'Account Transfer',
+    icon: 'ArrowLeftRight',
+    color: '#6366F1',
+    category_type: 'transfer',
+    is_system: true,
+    is_active: true,
+  },
 ]
 
 /**
