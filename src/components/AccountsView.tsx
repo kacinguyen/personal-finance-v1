@@ -104,6 +104,21 @@ function formatCurrencyFull(amount: number): string {
   }).format(amount)
 }
 
+function formatRelativeTime(dateStr: string): string {
+  const now = Date.now()
+  const then = new Date(dateStr).getTime()
+  const diffMs = now - then
+  const diffMin = Math.floor(diffMs / 60000)
+  const diffHr = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMin < 1) return 'just now'
+  if (diffMin < 60) return `${diffMin}m ago`
+  if (diffHr < 24) return `${diffHr}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 // --- Chart tooltip ---
 
 function ChartTooltip({ active, payload, label }: {
@@ -919,6 +934,9 @@ export function AccountsView() {
                                       ? `${account.institution_name} · `
                                       : ''}
                                     {ACCOUNT_TYPE_LABELS[account.account_type]}
+                                    {!account.is_manual && account.updated_at && (
+                                      <span className="text-[#1F1410]/25"> · Synced {formatRelativeTime(account.updated_at)}</span>
+                                    )}
                                   </p>
                                 </div>
                               </div>

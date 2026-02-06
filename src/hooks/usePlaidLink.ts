@@ -27,7 +27,15 @@ export function usePlaidLink({ accessToken, onSuccess }: UsePlaidLinkOptions = {
         { body },
       )
 
-      if (fnError) throw new Error(fnError.message)
+      if (fnError) {
+        // Try to extract the actual error from the response body
+        const context = (fnError as unknown as { context?: Response }).context
+        if (context) {
+          const errBody = await context.json().catch(() => null)
+          if (errBody?.error) throw new Error(errBody.error)
+        }
+        throw new Error(fnError.message)
+      }
       if (data?.error) throw new Error(data.error)
 
       setLinkToken(data.link_token)
@@ -53,8 +61,8 @@ export function usePlaidLink({ accessToken, onSuccess }: UsePlaidLinkOptions = {
           },
         )
 
-        if (fnError) throw new Error(fnError.message)
         if (data?.error) throw new Error(data.error)
+        if (fnError) throw new Error(fnError.message)
 
         onSuccess?.()
       } catch (err) {

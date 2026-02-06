@@ -18,8 +18,6 @@ export function getPlaidBaseUrl(): string {
   switch (env) {
     case 'production':
       return 'https://production.plaid.com'
-    case 'development':
-      return 'https://development.plaid.com'
     default:
       return 'https://sandbox.plaid.com'
   }
