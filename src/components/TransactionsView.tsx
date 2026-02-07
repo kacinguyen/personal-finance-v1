@@ -22,11 +22,13 @@ import {
   X,
   Split,
   Upload,
+  GitMerge,
 } from 'lucide-react'
 import { TransactionItem } from './TransactionItem'
 import { UICategory, dbCategoryToUI } from './CategoryDropdown'
 import { AddTransactionModal, TransactionFormData } from './AddTransactionModal'
 import { SplitTransactionModal } from './SplitTransactionModal'
+import { DuplicateReconciliationModal } from './DuplicateReconciliationModal'
 import { importCSVFiles } from '../lib/csvImport'
 import { supabase } from '../lib/supabase'
 import { getIcon, DEFAULT_COLOR } from '../lib/iconMap'
@@ -101,6 +103,7 @@ export function TransactionsView() {
   const { userId } = useUser()
   const { categories: dbCategories, findCategoryByName, refetch: refetchCategories, transferCategories } = useCategories()
   const [transactions, setTransactions] = useState<UITransaction[]>([])
+  const [rawTransactions, setRawTransactions] = useState<DBTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -122,6 +125,7 @@ export function TransactionsView() {
   const [showFiltersPanel, setShowFiltersPanel] = useState(false)
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false)
   const [showAddDropdown, setShowAddDropdown] = useState(false)
+  const [isReconcileModalOpen, setIsReconcileModalOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Convert DB categories to UI categories with resolved icons (all categories for filtering)
@@ -232,9 +236,12 @@ export function TransactionsView() {
 
     if (!txData) {
       setTransactions([])
+      setRawTransactions([])
       setLoading(false)
       return
     }
+
+    setRawTransactions(txData as DBTransaction[])
 
     // Fetch all splits for these transactions
     const txIds = txData.map(tx => tx.id)
@@ -708,6 +715,16 @@ export function TransactionsView() {
                       >
                         <Upload className="w-4 h-4 text-[#1F1410]/50" />
                         Import CSV
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsReconcileModalOpen(true)
+                          setShowAddDropdown(false)
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-[#1F1410]/5 transition-colors text-[#1F1410]"
+                      >
+                        <GitMerge className="w-4 h-4 text-[#1F1410]/50" />
+                        Reconcile Duplicates
                       </button>
                     </div>
                   )}
@@ -1220,6 +1237,14 @@ export function TransactionsView() {
           }))}
         />
       )}
+
+      {/* Duplicate Reconciliation Modal */}
+      <DuplicateReconciliationModal
+        isOpen={isReconcileModalOpen}
+        onClose={() => setIsReconcileModalOpen(false)}
+        transactions={rawTransactions}
+        onComplete={fetchTransactions}
+      />
     </div>
   )
 }
