@@ -145,5 +145,6 @@ function mapTransaction(
     payment_channel: tx.payment_channel || null,
     source: 'plaid',
     source_name: sourceName || null,
+    needs_review: true,
   }
 }

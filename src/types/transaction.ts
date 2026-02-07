@@ -27,6 +27,7 @@ export type Transaction = {
   source_name: string | null
   created_at: string
   updated_at: string
+  needs_review: boolean
 }
 
 /**
@@ -92,6 +93,7 @@ export const csvRowToTransaction = (row: CSVTransactionRow): TransactionInsert =
   payment_channel: null,
   source: 'csv_import',
   source_name: null,
+  needs_review: true,
 })
 
 /**
@@ -128,6 +130,7 @@ export const plaidToTransaction = (
   payment_channel: (plaidTx.payment_channel as PaymentChannel) || null,
   source: 'plaid',
   source_name: sourceName || null,
+  needs_review: true,
 })
 
 /**

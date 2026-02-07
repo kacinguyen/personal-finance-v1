@@ -3,8 +3,6 @@ import { motion } from 'framer-motion'
 import {
   ArrowLeftRight,
   CircleDollarSign,
-  TrendingUp,
-  TrendingDown,
   Search,
   ChevronLeft,
   ChevronRight,
@@ -23,6 +21,8 @@ import {
   Split,
   Upload,
   GitMerge,
+  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react'
 import { TransactionItem } from './TransactionItem'
 import { UICategory, dbCategoryToUI } from './CategoryDropdown'
@@ -30,6 +30,8 @@ import { AddTransactionModal, TransactionFormData } from './AddTransactionModal'
 import { SplitTransactionModal } from './SplitTransactionModal'
 import { DuplicateReconciliationModal } from './DuplicateReconciliationModal'
 import { importCSVFiles } from '../lib/csvImport'
+import { detectDuplicates } from '../lib/duplicateDetection'
+import type { DuplicatePair } from '../types/duplicateReconciliation'
 import { supabase } from '../lib/supabase'
 import { getIcon, DEFAULT_COLOR } from '../lib/iconMap'
 import { useCategories } from '../hooks/useCategories'
@@ -65,13 +67,16 @@ type UITransaction = {
   tags: string | null
   notes: string | null
   type: 'income' | 'expense' | 'transfer'
+  needs_review: boolean
   splits: UITransactionSplit[]
 }
 
 type FilterType = 'all' | 'income' | 'expense' | 'transfer'
+type ReviewFilter = 'all' | 'to_review' | 'reviewed'
 
 type Filters = {
   type: FilterType
+  reviewStatus: ReviewFilter
   categoryId: string | null
   accountSource: string | null
   searchQuery: string
@@ -115,14 +120,18 @@ export function TransactionsView() {
   const [selectedTransaction, setSelectedTransaction] = useState<UITransaction | null>(null)
   const [filters, setFilters] = useState<Filters>({
     type: 'all',
+    reviewStatus: 'all',
     categoryId: null,
     accountSource: null,
     searchQuery: '',
   })
-  const [showTypeDropdown, setShowTypeDropdown] = useState(false)
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
   const [showSourceDropdown, setShowSourceDropdown] = useState(false)
   const [showFiltersPanel, setShowFiltersPanel] = useState(false)
+  const [filterDropdownPos, setFilterDropdownPos] = useState<{ top: number; left: number } | null>(null)
+  const filterButtonRef = useRef<HTMLButtonElement>(null)
+  const [searchExpanded, setSearchExpanded] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false)
   const [showAddDropdown, setShowAddDropdown] = useState(false)
   const [isReconcileModalOpen, setIsReconcileModalOpen] = useState(false)
@@ -211,6 +220,7 @@ export function TransactionsView() {
       tags: tx.tags || null,
       notes: tx.notes || null,
       type,
+      needs_review: tx.needs_review ?? false,
       splits: uiSplits,
     }
   }, [dbCategories, findCategoryByName, transferCategories])
@@ -288,6 +298,10 @@ export function TransactionsView() {
       if (filters.type === 'expense' && tx.type !== 'expense') return false
       if (filters.type === 'transfer' && tx.type !== 'transfer') return false
 
+      // Review status filter
+      if (filters.reviewStatus === 'to_review' && !tx.needs_review) return false
+      if (filters.reviewStatus === 'reviewed' && tx.needs_review) return false
+
       // Category filter
       if (filters.categoryId && tx.category_id !== filters.categoryId) return false
 
@@ -307,17 +321,10 @@ export function TransactionsView() {
     })
   }, [transactions, filters])
 
-  // Stats calculation
-  const stats = useMemo(() => {
-    const totalIn = filteredTransactions
-      .filter(tx => tx.amount > 0)
-      .reduce((sum, tx) => sum + tx.amount, 0)
-    const totalOut = filteredTransactions
-      .filter(tx => tx.amount < 0)
-      .reduce((sum, tx) => sum + Math.abs(tx.amount), 0)
-    const net = totalIn - totalOut
-    return { totalIn, totalOut, net }
-  }, [filteredTransactions])
+  // To Review count
+  const toReviewCount = useMemo(() => {
+    return transactions.filter(tx => tx.needs_review).length
+  }, [transactions])
 
   // Pagination
   const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE)
@@ -387,6 +394,7 @@ export function TransactionsView() {
         plaid_category: null,
         plaid_category_id: null,
         payment_channel: null,
+        needs_review: false,
       })
 
       if (error) {
@@ -450,6 +458,30 @@ export function TransactionsView() {
     setSelectedTransaction(null)
   }
 
+  const handleMarkAsReviewed = async (transactionId: string) => {
+    const { error } = await supabase
+      .from('transactions')
+      .update({ needs_review: false })
+      .eq('id', transactionId)
+
+    if (error) {
+      console.error('Error marking transaction as reviewed:', error)
+      return
+    }
+
+    // Update local state to avoid full refetch
+    setTransactions(prev =>
+      prev.map(tx =>
+        tx.id === transactionId ? { ...tx, needs_review: false } : tx
+      )
+    )
+    setRawTransactions(prev =>
+      prev.map(tx =>
+        tx.id === transactionId ? { ...tx, needs_review: false } : tx
+      )
+    )
+  }
+
   const handleSaveSplits = async (splits: UISplit[]) => {
     if (!selectedTransaction) return
 
@@ -491,6 +523,15 @@ export function TransactionsView() {
     await fetchTransactions()
   }
 
+  const toggleFiltersPanel = useCallback(() => {
+    if (!showFiltersPanel && filterButtonRef.current) {
+      const rect = filterButtonRef.current.getBoundingClientRect()
+      setFilterDropdownPos({ top: rect.bottom + 8, left: rect.left })
+    }
+    setShowFiltersPanel(prev => !prev)
+    setShowAddDropdown(false)
+  }, [showFiltersPanel])
+
   const handleAddNewTransaction = () => {
     setEditingTransaction(null)
     setIsAddModalOpen(true)
@@ -520,12 +561,32 @@ export function TransactionsView() {
     { id: 'transfer', label: 'Transfer' },
   ]
 
+  const reviewStatuses: { id: ReviewFilter; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'to_review', label: 'To Review' },
+    { id: 'reviewed', label: 'Reviewed' },
+  ]
+
   const selectedCategory = filters.categoryId
     ? allUiCategories.find(c => c.id === filters.categoryId)
     : null
 
+  // Duplicate detection map for detail panel
+  const duplicateMap = useMemo(() => {
+    const pairs = detectDuplicates(rawTransactions)
+    const map = new Map<string, DuplicatePair[]>()
+    for (const pair of pairs) {
+      const aId = pair.transactionA.id
+      const bId = pair.transactionB.id
+      map.set(aId, [...(map.get(aId) || []), pair])
+      map.set(bId, [...(map.get(bId) || []), pair])
+    }
+    return map
+  }, [rawTransactions])
+
   const activeFilterCount = [
     filters.type !== 'all',
+    filters.reviewStatus !== 'all',
     filters.categoryId !== null,
     filters.accountSource !== null,
   ].filter(Boolean).length
@@ -555,83 +616,6 @@ export function TransactionsView() {
           <p className="text-[#1F1410]/60 text-lg">Manage all your financial transactions</p>
         </motion.div>
 
-        {/* Stats Cards */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6"
-        >
-          {/* Total In */}
-          <div
-            className="bg-white rounded-2xl p-5"
-            style={{ boxShadow: SHADOWS.card }}
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
-                style={{ backgroundColor: '#10B98115' }}
-              >
-                <TrendingUp className="w-6 h-6 text-[#10B981]" />
-              </div>
-              <div>
-                <p className="text-sm text-[#1F1410]/50">Total In</p>
-                <p className="text-2xl font-bold text-[#10B981]">
-                  +${stats.totalIn.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Total Out */}
-          <div
-            className="bg-white rounded-2xl p-5"
-            style={{ boxShadow: SHADOWS.card }}
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
-                style={{ backgroundColor: '#FF6B6B15' }}
-              >
-                <TrendingDown className="w-6 h-6 text-[#FF6B6B]" />
-              </div>
-              <div>
-                <p className="text-sm text-[#1F1410]/50">Total Out</p>
-                <p className="text-2xl font-bold text-[#1F1410]">
-                  -${stats.totalOut.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Net */}
-          <div
-            className="bg-white rounded-2xl p-5"
-            style={{ boxShadow: SHADOWS.card }}
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
-                style={{ backgroundColor: stats.net >= 0 ? '#10B98115' : '#FF6B6B15' }}
-              >
-                <CircleDollarSign
-                  className="w-6 h-6"
-                  style={{ color: stats.net >= 0 ? '#10B981' : '#FF6B6B' }}
-                />
-              </div>
-              <div>
-                <p className="text-sm text-[#1F1410]/50">Net</p>
-                <p
-                  className="text-2xl font-bold"
-                  style={{ color: stats.net >= 0 ? '#10B981' : '#FF6B6B' }}
-                >
-                  {stats.net >= 0 ? '+' : '-'}${Math.abs(stats.net).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
         {/* Two Column Layout: Transactions List + Details Panel */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -644,46 +628,83 @@ export function TransactionsView() {
             className="bg-white rounded-2xl overflow-hidden"
             style={{ boxShadow: SHADOWS.card }}
           >
-            {/* Search and Filter Bar */}
-            <div className="p-4 border-b border-[#1F1410]/5">
-              <div className="flex items-center gap-3">
-                {/* Search Input */}
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1F1410]/40" />
-                  <input
-                    type="text"
-                    placeholder="Search transactions..."
-                    value={filters.searchQuery}
-                    onChange={(e) => setFilters(f => ({ ...f, searchQuery: e.target.value }))}
-                    className="w-full pl-9 pr-4 py-2 rounded-lg border border-[#1F1410]/10 text-sm focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/20 focus:border-[#8B5CF6]/30 transition-all"
-                  />
-                </div>
+            {/* Compact Toolbar */}
+            <div className="p-3 border-b border-[#1F1410]/5">
+              <div className="flex items-center gap-2">
+                {/* Collapsible Search */}
+                {searchExpanded ? (
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1F1410]/40" />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      placeholder="Search transactions..."
+                      value={filters.searchQuery}
+                      onChange={(e) => setFilters(f => ({ ...f, searchQuery: e.target.value }))}
+                      onBlur={() => {
+                        if (!filters.searchQuery) setSearchExpanded(false)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setFilters(f => ({ ...f, searchQuery: '' }))
+                          setSearchExpanded(false)
+                        }
+                      }}
+                      className="w-full pl-9 pr-8 py-1.5 rounded-lg border border-[#1F1410]/10 text-sm focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/20 focus:border-[#8B5CF6]/30 transition-all"
+                    />
+                    <button
+                      onClick={() => {
+                        setFilters(f => ({ ...f, searchQuery: '' }))
+                        setSearchExpanded(false)
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[#1F1410]/30 hover:text-[#1F1410]/60"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setSearchExpanded(true)
+                      setTimeout(() => searchInputRef.current?.focus(), 0)
+                    }}
+                    className="flex items-center justify-center w-8 h-8 rounded-lg text-[#1F1410]/50 hover:text-[#1F1410] hover:bg-[#1F1410]/5 transition-colors"
+                  >
+                    <Search className="w-4 h-4" />
+                  </button>
+                )}
 
                 {/* Filter Button */}
                 <button
-                  onClick={() => setShowFiltersPanel(!showFiltersPanel)}
-                  className={`relative flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                  ref={filterButtonRef}
+                  onClick={toggleFiltersPanel}
+                  className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
                     showFiltersPanel || activeFilterCount > 0
                       ? 'border-[#8B5CF6]/30 bg-[#8B5CF6]/5 text-[#8B5CF6]'
                       : 'border-[#1F1410]/10 text-[#1F1410]/60 hover:border-[#1F1410]/20 hover:text-[#1F1410]'
                   }`}
                 >
-                  <SlidersHorizontal className="w-4 h-4" />
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
                   <span>Filter</span>
                   {activeFilterCount > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#8B5CF6] text-white text-xs font-bold flex items-center justify-center">
+                    <span className="w-4.5 h-4.5 rounded-full bg-[#8B5CF6] text-white text-[10px] font-bold flex items-center justify-center min-w-[18px] px-1">
                       {activeFilterCount}
                     </span>
                   )}
                 </button>
+
+                <div className="flex-1" />
 
                 {/* Add Button with Dropdown */}
                 <div className="relative">
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={() => setShowAddDropdown(!showAddDropdown)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+                    onClick={() => {
+                      setShowAddDropdown(!showAddDropdown)
+                      setShowFiltersPanel(false)
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white transition-colors"
                     style={{ backgroundColor: TAB_COLORS.transactions }}
                   >
                     <Plus className="w-4 h-4" />
@@ -716,16 +737,6 @@ export function TransactionsView() {
                         <Upload className="w-4 h-4 text-[#1F1410]/50" />
                         Import CSV
                       </button>
-                      <button
-                        onClick={() => {
-                          setIsReconcileModalOpen(true)
-                          setShowAddDropdown(false)
-                        }}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-[#1F1410]/5 transition-colors text-[#1F1410]"
-                      >
-                        <GitMerge className="w-4 h-4 text-[#1F1410]/50" />
-                        Reconcile Duplicates
-                      </button>
                     </div>
                   )}
 
@@ -746,194 +757,62 @@ export function TransactionsView() {
                 </div>
               </div>
 
-              {/* Expanded Filters Panel */}
-              {showFiltersPanel && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="mt-4 pt-4 border-t border-[#1F1410]/5"
-                >
-                  <div className="flex flex-wrap gap-6">
-                    {/* Type Filter */}
-                    <div>
-                      <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-2">
-                        Type
-                      </label>
-                      <div className="relative">
-                        <button
-                          onClick={() => {
-                            setShowTypeDropdown(!showTypeDropdown)
-                            setShowCategoryDropdown(false)
-                            setShowSourceDropdown(false)
-                          }}
-                          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#1F1410]/10 text-sm hover:border-[#1F1410]/20 transition-colors"
-                        >
-                          <span className={filters.type !== 'all' ? 'text-[#1F1410]' : 'text-[#1F1410]/60'}>
-                            {filterTypes.find(t => t.id === filters.type)?.label || 'All'}
-                          </span>
-                          <ChevronDown className="w-4 h-4 text-[#1F1410]/40" />
-                        </button>
-
-                        {showTypeDropdown && (
-                          <div
-                            className="absolute top-full left-0 mt-2 bg-white rounded-xl border border-[#1F1410]/10 shadow-lg z-50 min-w-[140px] overflow-y-auto"
-                            onMouseLeave={() => setShowTypeDropdown(false)}
-                          >
-                            {filterTypes.map((type) => (
-                              <button
-                                key={type.id}
-                                onClick={() => {
-                                  setFilters(f => ({ ...f, type: type.id }))
-                                  setShowTypeDropdown(false)
-                                }}
-                                className={`w-full px-4 py-2 text-left text-sm hover:bg-[#1F1410]/5 transition-colors ${
-                                  filters.type === type.id ? 'text-[#8B5CF6] font-medium' : 'text-[#1F1410]'
-                                }`}
-                              >
-                                {type.label}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Category Filter */}
-                    <div>
-                      <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-2">
-                        Category
-                      </label>
-                      <div className="relative">
-                        <button
-                          onClick={() => {
-                            setShowCategoryDropdown(!showCategoryDropdown)
-                            setShowTypeDropdown(false)
-                            setShowSourceDropdown(false)
-                          }}
-                          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#1F1410]/10 text-sm hover:border-[#1F1410]/20 transition-colors"
-                        >
-                          {selectedCategory ? (
-                            <>
-                              <div
-                                className="w-5 h-5 rounded flex items-center justify-center"
-                                style={{ backgroundColor: `${selectedCategory.color}15` }}
-                              >
-                                <selectedCategory.icon
-                                  className="w-3 h-3"
-                                  style={{ color: selectedCategory.color }}
-                                />
-                              </div>
-                              <span className="text-[#1F1410]">{selectedCategory.name}</span>
-                            </>
-                          ) : (
-                            <span className="text-[#1F1410]/60">All Categories</span>
-                          )}
-                          <ChevronDown className="w-4 h-4 text-[#1F1410]/40" />
-                        </button>
-
-                        {showCategoryDropdown && (
-                          <div
-                            className="absolute top-full left-0 mt-2 bg-white rounded-xl border border-[#1F1410]/10 shadow-lg z-50 min-w-[200px] max-h-[300px] overflow-y-auto"
-                            onMouseLeave={() => setShowCategoryDropdown(false)}
-                          >
-                            <button
-                              onClick={() => {
-                                setFilters(f => ({ ...f, categoryId: null }))
-                                setShowCategoryDropdown(false)
-                              }}
-                              className="w-full px-4 py-2 text-left text-sm text-[#1F1410]/60 hover:bg-[#1F1410]/5 transition-colors"
-                            >
-                              All Categories
-                            </button>
-                            {allUiCategories.map((cat) => (
-                              <button
-                                key={cat.id}
-                                onClick={() => {
-                                  setFilters(f => ({ ...f, categoryId: cat.id }))
-                                  setShowCategoryDropdown(false)
-                                }}
-                                className="w-full flex items-center gap-2 px-4 py-2 text-left text-sm hover:bg-[#1F1410]/5 transition-colors"
-                              >
-                                <div
-                                  className="w-5 h-5 rounded flex items-center justify-center"
-                                  style={{ backgroundColor: `${cat.color}15` }}
-                                >
-                                  <cat.icon className="w-3 h-3" style={{ color: cat.color }} />
-                                </div>
-                                <span className="text-[#1F1410]">{cat.name}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Source Filter */}
-                    <div>
-                      <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-2">
-                        Source
-                      </label>
-                      <div className="relative">
-                        <button
-                          onClick={() => {
-                            setShowSourceDropdown(!showSourceDropdown)
-                            setShowTypeDropdown(false)
-                            setShowCategoryDropdown(false)
-                          }}
-                          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#1F1410]/10 text-sm hover:border-[#1F1410]/20 transition-colors"
-                        >
-                          <span className={filters.accountSource ? 'text-[#1F1410]' : 'text-[#1F1410]/60'}>
-                            {filters.accountSource || 'All Sources'}
-                          </span>
-                          <ChevronDown className="w-4 h-4 text-[#1F1410]/40" />
-                        </button>
-
-                        {showSourceDropdown && (
-                          <div
-                            className="absolute top-full left-0 mt-2 bg-white rounded-xl border border-[#1F1410]/10 shadow-lg z-50 min-w-[180px] max-h-[300px] overflow-y-auto"
-                            onMouseLeave={() => setShowSourceDropdown(false)}
-                          >
-                            <button
-                              onClick={() => {
-                                setFilters(f => ({ ...f, accountSource: null }))
-                                setShowSourceDropdown(false)
-                              }}
-                              className="w-full px-4 py-2 text-left text-sm text-[#1F1410]/60 hover:bg-[#1F1410]/5 transition-colors"
-                            >
-                              All Sources
-                            </button>
-                            {accountSources.map((source) => (
-                              <button
-                                key={source}
-                                onClick={() => {
-                                  setFilters(f => ({ ...f, accountSource: source }))
-                                  setShowSourceDropdown(false)
-                                }}
-                                className="w-full px-4 py-2 text-left text-sm text-[#1F1410] hover:bg-[#1F1410]/5 transition-colors"
-                              >
-                                {source}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Clear Filters */}
-                    {activeFilterCount > 0 && (
-                      <div className="flex items-end">
-                        <button
-                          onClick={() => setFilters({ type: 'all', categoryId: null, accountSource: null, searchQuery: filters.searchQuery })}
-                          className="flex items-center gap-1.5 px-3 py-2 text-sm text-[#1F1410]/50 hover:text-[#1F1410] transition-colors"
-                        >
-                          <X className="w-4 h-4" />
-                          Clear filters
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
+              {/* Active Filter Chips */}
+              {(activeFilterCount > 0 || filters.searchQuery) && (
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  {filters.searchQuery && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#1F1410]/5 text-xs text-[#1F1410]/70">
+                      &ldquo;{filters.searchQuery}&rdquo;
+                      <button onClick={() => {
+                        setFilters(f => ({ ...f, searchQuery: '' }))
+                        if (!filters.searchQuery) setSearchExpanded(false)
+                      }} className="text-[#1F1410]/40 hover:text-[#1F1410]/70">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {filters.type !== 'all' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#8B5CF6]/10 text-xs text-[#8B5CF6]">
+                      {filterTypes.find(t => t.id === filters.type)?.label}
+                      <button onClick={() => setFilters(f => ({ ...f, type: 'all' }))} className="text-[#8B5CF6]/50 hover:text-[#8B5CF6]">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {filters.reviewStatus !== 'all' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#3B82F6]/10 text-xs text-[#3B82F6]">
+                      {reviewStatuses.find(s => s.id === filters.reviewStatus)?.label}
+                      {filters.reviewStatus === 'to_review' && toReviewCount > 0 && ` (${toReviewCount})`}
+                      <button onClick={() => setFilters(f => ({ ...f, reviewStatus: 'all' }))} className="text-[#3B82F6]/50 hover:text-[#3B82F6]">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {selectedCategory && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: `${selectedCategory.color}15`, color: selectedCategory.color }}>
+                      {selectedCategory.name}
+                      <button onClick={() => setFilters(f => ({ ...f, categoryId: null }))} className="opacity-50 hover:opacity-100">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {filters.accountSource && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#1F1410]/5 text-xs text-[#1F1410]/70">
+                      {filters.accountSource}
+                      <button onClick={() => setFilters(f => ({ ...f, accountSource: null }))} className="text-[#1F1410]/40 hover:text-[#1F1410]/70">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {activeFilterCount > 1 && (
+                    <button
+                      onClick={() => setFilters({ type: 'all', reviewStatus: 'all', categoryId: null, accountSource: null, searchQuery: '' })}
+                      className="text-[10px] text-[#1F1410]/40 hover:text-[#1F1410]/60 transition-colors ml-1"
+                    >
+                      Clear all
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -974,6 +853,7 @@ export function TransactionsView() {
                       color={transaction.color}
                       source={transaction.source}
                       type={transaction.type}
+                      needsReview={transaction.needs_review}
                       index={index}
                       isSelected={selectedTransaction?.id === transaction.id}
                       onClick={() => handleTransactionClick(transaction)}
@@ -1171,8 +1051,41 @@ export function TransactionsView() {
                   )}
                 </div>
 
+                {/* Potential Duplicate Warning */}
+                {duplicateMap.has(selectedTransaction.id) && (
+                  <div className="mt-4 p-3 rounded-xl bg-[#F59E0B]/10 border border-[#F59E0B]/20">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-[#F59E0B] mt-0.5 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-[#92400E]">
+                          Potential Duplicate
+                        </p>
+                        <p className="text-xs text-[#92400E]/70 mt-0.5">
+                          {duplicateMap.get(selectedTransaction.id)!.length} possible {duplicateMap.get(selectedTransaction.id)!.length === 1 ? 'match' : 'matches'} found
+                        </p>
+                        <button
+                          onClick={() => setIsReconcileModalOpen(true)}
+                          className="flex items-center gap-1.5 mt-2 text-xs font-medium text-[#92400E] hover:text-[#78350F] transition-colors"
+                        >
+                          <GitMerge className="w-3.5 h-3.5" />
+                          Resolve
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Action Buttons */}
                 <div className="flex items-center gap-4 mt-6 pt-6 border-t border-[#1F1410]/5">
+                  {selectedTransaction.needs_review && (
+                    <button
+                      onClick={() => handleMarkAsReviewed(selectedTransaction.id)}
+                      className="flex items-center gap-1.5 text-sm text-[#3B82F6] hover:text-[#2563EB] transition-colors"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Mark Reviewed
+                    </button>
+                  )}
                   <button
                     onClick={handleEditSelectedTransaction}
                     className="flex items-center gap-1.5 text-sm text-[#1F1410]/50 hover:text-[#1F1410] transition-colors"
@@ -1245,6 +1158,172 @@ export function TransactionsView() {
         transactions={rawTransactions}
         onComplete={fetchTransactions}
       />
+
+      {/* Fixed-position Filter Dropdown (rendered outside overflow-hidden container) */}
+      {showFiltersPanel && filterDropdownPos && (
+        <>
+          {/* Backdrop to close on click outside */}
+          <div className="fixed inset-0 z-[99]" onClick={() => setShowFiltersPanel(false)} />
+
+          <div
+            className="fixed z-[100] bg-white rounded-xl border border-[#1F1410]/10 shadow-lg p-3 w-[280px]"
+            style={{ top: filterDropdownPos.top, left: filterDropdownPos.left }}
+          >
+            <div className="space-y-3">
+              {/* Type */}
+              <div>
+                <label className="block text-[10px] font-semibold text-[#1F1410]/40 uppercase tracking-wider mb-1">Type</label>
+                <div className="flex flex-wrap gap-1">
+                  {filterTypes.map((type) => (
+                    <button
+                      key={type.id}
+                      onClick={() => setFilters(f => ({ ...f, type: type.id }))}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                        filters.type === type.id
+                          ? 'bg-[#8B5CF6]/10 text-[#8B5CF6]'
+                          : 'text-[#1F1410]/60 hover:bg-[#1F1410]/5 hover:text-[#1F1410]'
+                      }`}
+                    >
+                      {type.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-[10px] font-semibold text-[#1F1410]/40 uppercase tracking-wider mb-1">Status</label>
+                <div className="flex flex-wrap gap-1">
+                  {reviewStatuses.map((status) => (
+                    <button
+                      key={status.id}
+                      onClick={() => setFilters(f => ({ ...f, reviewStatus: status.id }))}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                        filters.reviewStatus === status.id
+                          ? 'bg-[#8B5CF6]/10 text-[#8B5CF6]'
+                          : 'text-[#1F1410]/60 hover:bg-[#1F1410]/5 hover:text-[#1F1410]'
+                      }`}
+                    >
+                      {status.label}
+                      {status.id === 'to_review' && toReviewCount > 0 && (
+                        <span className="px-1 py-px rounded text-[9px] font-bold bg-[#3B82F6] text-white min-w-[14px] text-center leading-tight">
+                          {toReviewCount}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-[10px] font-semibold text-[#1F1410]/40 uppercase tracking-wider mb-1">Category</label>
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setShowCategoryDropdown(!showCategoryDropdown)
+                      setShowSourceDropdown(false)
+                    }}
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-[#1F1410]/10 text-xs hover:border-[#1F1410]/20 transition-colors w-full"
+                  >
+                    {selectedCategory ? (
+                      <>
+                        <div
+                          className="w-4 h-4 rounded flex items-center justify-center"
+                          style={{ backgroundColor: `${selectedCategory.color}15` }}
+                        >
+                          <selectedCategory.icon className="w-2.5 h-2.5" style={{ color: selectedCategory.color }} />
+                        </div>
+                        <span className="text-[#1F1410] flex-1 text-left">{selectedCategory.name}</span>
+                      </>
+                    ) : (
+                      <span className="text-[#1F1410]/50 flex-1 text-left">All Categories</span>
+                    )}
+                    <ChevronDown className="w-3 h-3 text-[#1F1410]/40" />
+                  </button>
+
+                  {showCategoryDropdown && (
+                    <div className="absolute top-full left-0 mt-1 bg-white rounded-lg border border-[#1F1410]/10 shadow-lg z-[110] min-w-full max-h-[200px] overflow-y-auto">
+                      <button
+                        onClick={() => {
+                          setFilters(f => ({ ...f, categoryId: null }))
+                          setShowCategoryDropdown(false)
+                        }}
+                        className="w-full px-3 py-1.5 text-left text-xs text-[#1F1410]/50 hover:bg-[#1F1410]/5 transition-colors"
+                      >
+                        All Categories
+                      </button>
+                      {allUiCategories.map((cat) => (
+                        <button
+                          key={cat.id}
+                          onClick={() => {
+                            setFilters(f => ({ ...f, categoryId: cat.id }))
+                            setShowCategoryDropdown(false)
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[#1F1410]/5 transition-colors"
+                        >
+                          <div
+                            className="w-4 h-4 rounded flex items-center justify-center"
+                            style={{ backgroundColor: `${cat.color}15` }}
+                          >
+                            <cat.icon className="w-2.5 h-2.5" style={{ color: cat.color }} />
+                          </div>
+                          <span className="text-[#1F1410]">{cat.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Source */}
+              <div>
+                <label className="block text-[10px] font-semibold text-[#1F1410]/40 uppercase tracking-wider mb-1">Source</label>
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setShowSourceDropdown(!showSourceDropdown)
+                      setShowCategoryDropdown(false)
+                    }}
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-[#1F1410]/10 text-xs hover:border-[#1F1410]/20 transition-colors w-full"
+                  >
+                    <span className={`flex-1 text-left ${filters.accountSource ? 'text-[#1F1410]' : 'text-[#1F1410]/50'}`}>
+                      {filters.accountSource || 'All Sources'}
+                    </span>
+                    <ChevronDown className="w-3 h-3 text-[#1F1410]/40" />
+                  </button>
+
+                  {showSourceDropdown && (
+                    <div className="absolute top-full left-0 mt-1 bg-white rounded-lg border border-[#1F1410]/10 shadow-lg z-[110] min-w-full max-h-[200px] overflow-y-auto">
+                      <button
+                        onClick={() => {
+                          setFilters(f => ({ ...f, accountSource: null }))
+                          setShowSourceDropdown(false)
+                        }}
+                        className="w-full px-3 py-1.5 text-left text-xs text-[#1F1410]/50 hover:bg-[#1F1410]/5 transition-colors"
+                      >
+                        All Sources
+                      </button>
+                      {accountSources.map((source) => (
+                        <button
+                          key={source}
+                          onClick={() => {
+                            setFilters(f => ({ ...f, accountSource: source }))
+                            setShowSourceDropdown(false)
+                          }}
+                          className="w-full px-3 py-1.5 text-left text-xs text-[#1F1410] hover:bg-[#1F1410]/5 transition-colors"
+                        >
+                          {source}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

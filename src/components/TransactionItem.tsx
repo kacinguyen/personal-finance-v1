@@ -19,6 +19,7 @@ type TransactionItemProps = {
   color: string
   source: string
   type: TransactionType
+  needsReview?: boolean
   index: number
   isSelected?: boolean
   onClick: () => void
@@ -33,6 +34,7 @@ export function TransactionItem({
   color,
   source,
   type,
+  needsReview,
   index,
   isSelected,
   onClick,
@@ -47,6 +49,11 @@ export function TransactionItem({
         isSelected ? 'bg-[#8B5CF6]/5' : 'hover:bg-[#1F1410]/[0.02]'
       }`}
     >
+      {needsReview ? (
+        <div className="w-2 h-2 rounded-full bg-[#3B82F6] flex-shrink-0" />
+      ) : (
+        <div className="w-2 flex-shrink-0" />
+      )}
       <motion.div
         className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
         style={{ backgroundColor: color }}
