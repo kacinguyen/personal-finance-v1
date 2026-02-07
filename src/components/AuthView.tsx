@@ -72,7 +72,7 @@ export function AuthView() {
           >
             <User className="w-8 h-8 text-white" />
           </motion.div>
-          <h1 className="text-3xl font-bold text-[#1F1410]">Finance</h1>
+          <h1 className="text-3xl font-bold text-[#1F1410]">Pachi</h1>
           <p className="text-[#1F1410]/60 mt-2">
             {mode === 'sign-in' ? 'Welcome back' : 'Create your account'}
           </p>
