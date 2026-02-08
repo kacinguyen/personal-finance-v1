@@ -6,8 +6,12 @@
  */
 
 import type { Transaction, TransactionSource } from '../types/transaction'
+import type { AccountType } from '../types/account'
 import type { DuplicatePair, DuplicateMatchConfidence } from '../types/duplicateReconciliation'
 import { SOURCE_PRIORITY } from '../types/duplicateReconciliation'
+
+/** Maps plaid_account_id → account_type for transfer detection */
+export type AccountTypeMap = Map<string, AccountType>
 
 // Payment prefixes commonly prepended by processors
 const PAYMENT_PREFIXES = [
@@ -206,6 +210,7 @@ export function detectDuplicates(
             dateDiffDays: daysDiff,
             action: 'merge',
             keepTransactionId: primary.id,
+            pairType: 'duplicate',
           })
         }
       }
@@ -244,6 +249,198 @@ export function computeMergedFields(
   if (!keep.category_id && discard.category_id) {
     updates.category_id = discard.category_id
     updates.category = discard.category
+  }
+
+  return updates
+}
+
+// ───── Transfer Pair Detection ─────
+
+/** Keywords that indicate a credit card payment on the checking side */
+const CC_PAYMENT_KEYWORDS = [
+  'autopay',
+  'credit crd',
+  'credit card',
+  'card payment',
+  'online payment',
+  'bill payment',
+]
+
+/** Keywords that indicate a payment received on the credit card side */
+const CC_RECEIVED_KEYWORDS = [
+  'payment thank',
+  'payment received',
+  'payment - thank',
+  'autopay payment',
+  'online payment',
+]
+
+function hasPaymentKeyword(merchant: string, keywords: string[]): boolean {
+  const lower = merchant.toLowerCase()
+  return keywords.some(kw => lower.includes(kw))
+}
+
+/**
+ * Detect credit card payment transfer pairs.
+ *
+ * A transfer pair is a debit from checking/savings and a credit on a credit card
+ * for the same absolute amount within 3 days.
+ */
+export function detectTransferPairs(
+  transactions: Transaction[],
+  accountTypeMap: AccountTypeMap,
+  dismissedPairIds: Set<string> = new Set()
+): DuplicatePair[] {
+  // Only consider transactions with a plaid_account_id that we can look up
+  const withAccount = transactions.filter(
+    tx => tx.plaid_account_id && accountTypeMap.has(tx.plaid_account_id)
+  )
+
+  // Partition into debits (amount < 0) and credits (amount > 0)
+  const debits = withAccount.filter(tx => tx.amount < 0)
+  const credits = withAccount.filter(tx => tx.amount > 0)
+
+  // Group each by absolute amount in integer cents
+  const debitsByAmount = new Map<number, Transaction[]>()
+  for (const tx of debits) {
+    const key = Math.round(Math.abs(tx.amount) * 100)
+    const group = debitsByAmount.get(key) || []
+    group.push(tx)
+    debitsByAmount.set(key, group)
+  }
+
+  const creditsByAmount = new Map<number, Transaction[]>()
+  for (const tx of credits) {
+    const key = Math.round(tx.amount * 100)
+    const group = creditsByAmount.get(key) || []
+    group.push(tx)
+    creditsByAmount.set(key, group)
+  }
+
+  const pairs: DuplicatePair[] = []
+  const claimed = new Set<string>()
+
+  // Collect candidate pairs sorted by date proximity
+  type Candidate = {
+    checking: Transaction
+    cc: Transaction
+    daysDiff: number
+    matchReasons: string[]
+  }
+  const candidates: Candidate[] = []
+
+  for (const [amountCents, debitGroup] of debitsByAmount) {
+    const creditGroup = creditsByAmount.get(amountCents)
+    if (!creditGroup) continue
+
+    for (const debit of debitGroup) {
+      const debitType = accountTypeMap.get(debit.plaid_account_id!)!
+      for (const credit of creditGroup) {
+        const creditType = accountTypeMap.get(credit.plaid_account_id!)!
+
+        // Must be different accounts
+        if (debit.plaid_account_id === credit.plaid_account_id) continue
+
+        // One from checking/savings, other from credit_card
+        const isDebitBank = debitType === 'checking' || debitType === 'savings'
+        const isCreditCC = creditType === 'credit_card'
+        const isDebitCC = debitType === 'credit_card'
+        const isCreditBank = creditType === 'checking' || creditType === 'savings'
+
+        let checkingSide: Transaction
+        let ccSide: Transaction
+
+        if (isDebitBank && isCreditCC) {
+          checkingSide = debit
+          ccSide = credit
+        } else if (isDebitCC && isCreditBank) {
+          checkingSide = credit
+          ccSide = debit
+        } else {
+          continue
+        }
+
+        const daysDiff = dateDiffDays(checkingSide.date, ccSide.date)
+        if (daysDiff > 3) continue
+
+        const pairId = makePairId(checkingSide.id, ccSide.id)
+        if (dismissedPairIds.has(pairId)) continue
+
+        const matchReasons: string[] = []
+        matchReasons.push('Same amount (opposite signs)')
+        if (daysDiff === 0) {
+          matchReasons.push('Same date')
+        } else {
+          matchReasons.push(`${daysDiff} day${daysDiff > 1 ? 's' : ''} apart`)
+        }
+        matchReasons.push('Cross-account (bank ↔ credit card)')
+
+        if (hasPaymentKeyword(checkingSide.merchant, CC_PAYMENT_KEYWORDS)) {
+          matchReasons.push('Payment keyword in bank transaction')
+        }
+        if (hasPaymentKeyword(ccSide.merchant, CC_RECEIVED_KEYWORDS)) {
+          matchReasons.push('Payment keyword in CC transaction')
+        }
+
+        candidates.push({ checking: checkingSide, cc: ccSide, daysDiff, matchReasons })
+      }
+    }
+  }
+
+  // Sort by date proximity (prefer closest dates)
+  candidates.sort((a, b) => a.daysDiff - b.daysDiff)
+
+  // Each transaction participates in at most one pair
+  for (const c of candidates) {
+    if (claimed.has(c.checking.id) || claimed.has(c.cc.id)) continue
+
+    claimed.add(c.checking.id)
+    claimed.add(c.cc.id)
+
+    const pairId = makePairId(c.checking.id, c.cc.id)
+
+    pairs.push({
+      id: pairId,
+      transactionA: c.checking, // bank side = keep
+      transactionB: c.cc,       // CC side = remove
+      confidence: 'transfer',
+      matchReasons: c.matchReasons,
+      merchantSimilarity: 0,
+      dateDiffDays: c.daysDiff,
+      action: 'merge',
+      keepTransactionId: c.checking.id,
+      pairType: 'transfer',
+    })
+  }
+
+  // Sort by date diff ascending
+  pairs.sort((a, b) => a.dateDiffDays - b.dateDiffDays)
+
+  return pairs
+}
+
+/**
+ * Compute merged fields for a transfer pair.
+ * Forces category to "Credit Card Payment" and adopts tags/notes from CC side
+ * if the bank side lacks them.
+ */
+export function computeTransferMergedFields(
+  keep: Transaction,
+  discard: Transaction,
+  transferCategoryId: string,
+  transferCategoryName: string
+): Partial<Transaction> {
+  const updates: Partial<Transaction> = {
+    category_id: transferCategoryId,
+    category: transferCategoryName,
+  }
+
+  if (!keep.tags && discard.tags) {
+    updates.tags = discard.tags
+  }
+
+  if (!keep.notes && discard.notes) {
+    updates.notes = discard.notes
   }
 
   return updates

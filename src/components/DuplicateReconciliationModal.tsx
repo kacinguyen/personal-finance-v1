@@ -11,6 +11,7 @@ import {
   SkipForward,
 } from 'lucide-react'
 import { useDuplicateReconciliation } from '../hooks/useDuplicateReconciliation'
+import type { AccountTypeMap } from '../lib/duplicateDetection'
 import type { Transaction } from '../types/transaction'
 import type { DuplicatePair, DuplicateAction } from '../types/duplicateReconciliation'
 
@@ -19,6 +20,9 @@ interface DuplicateReconciliationModalProps {
   onClose: () => void
   transactions: Transaction[]
   onComplete: () => void
+  accountTypeMap?: AccountTypeMap
+  transferCategoryId?: string
+  transferCategoryName?: string
 }
 
 export function DuplicateReconciliationModal({
@@ -26,6 +30,9 @@ export function DuplicateReconciliationModal({
   onClose,
   transactions,
   onComplete,
+  accountTypeMap,
+  transferCategoryId,
+  transferCategoryName,
 }: DuplicateReconciliationModalProps) {
   const {
     step,
@@ -35,7 +42,11 @@ export function DuplicateReconciliationModal({
     setPairAction,
     swapKeepTransaction,
     executeReconciliation,
-  } = useDuplicateReconciliation(transactions, onComplete)
+  } = useDuplicateReconciliation(transactions, onComplete, {
+    accountTypeMap,
+    transferCategoryId,
+    transferCategoryName,
+  })
 
   // Run detection when modal opens
   useEffect(() => {
@@ -49,9 +60,28 @@ export function DuplicateReconciliationModal({
   const actionablePairs = pairs.filter(p => p.action !== 'skip')
   const mergePairs = pairs.filter(p => p.action === 'merge')
 
+  const hasDuplicates = pairs.some(p => p.pairType === 'duplicate')
+  const hasTransfers = pairs.some(p => p.pairType === 'transfer')
+  const transferCount = pairs.filter(p => p.pairType === 'transfer').length
+
+  const modalTitle =
+    hasDuplicates && hasTransfers ? 'Reconcile Duplicates & Transfers' :
+    hasTransfers && !hasDuplicates ? 'Reconcile Transfer Pairs' :
+    'Reconcile Duplicates'
+
+  const itemLabelPlural =
+    hasDuplicates && hasTransfers ? 'potential matches' :
+    hasTransfers && !hasDuplicates ? 'potential transfers' :
+    'potential duplicates'
+
+  const itemLabelSingular =
+    hasDuplicates && hasTransfers ? 'potential match' :
+    hasTransfers && !hasDuplicates ? 'potential transfer' :
+    'potential duplicate'
+
   const stepLabel =
-    step === 'detecting' ? 'Scanning for duplicates...' :
-    step === 'review' ? `${pairs.length} potential duplicate${pairs.length !== 1 ? 's' : ''} found` :
+    step === 'detecting' ? 'Scanning for duplicates & transfers...' :
+    step === 'review' ? `${pairs.length} ${pairs.length !== 1 ? itemLabelPlural : itemLabelSingular} found` :
     step === 'processing' ? 'Processing...' :
     'Reconciliation complete'
 
@@ -79,7 +109,7 @@ export function DuplicateReconciliationModal({
                 <GitMerge className="w-5 h-5 text-[#8B5CF6]" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-[#1F1410]">Reconcile Duplicates</h2>
+                <h2 className="text-lg font-bold text-[#1F1410]">{modalTitle}</h2>
                 <p className="text-sm text-[#1F1410]/50">{stepLabel}</p>
               </div>
             </div>
@@ -102,7 +132,7 @@ export function DuplicateReconciliationModal({
                   transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                   className="w-10 h-10 border-2 border-[#8B5CF6] border-t-transparent rounded-full mx-auto mb-4"
                 />
-                <p className="text-[#1F1410]/50">Analyzing transactions for duplicates...</p>
+                <p className="text-[#1F1410]/50">Analyzing transactions for duplicates & transfers...</p>
               </div>
             )}
 
@@ -110,9 +140,9 @@ export function DuplicateReconciliationModal({
             {step === 'review' && pairs.length === 0 && (
               <div className="py-12 text-center">
                 <CheckCircle2 className="w-12 h-12 text-[#10B981] mx-auto mb-3" />
-                <h3 className="text-lg font-bold text-[#1F1410] mb-1">No Duplicates Found</h3>
+                <h3 className="text-lg font-bold text-[#1F1410] mb-1">No Duplicates or Transfers Found</h3>
                 <p className="text-sm text-[#1F1410]/50">
-                  Your transactions look clean — no potential duplicates detected.
+                  Your transactions look clean — no potential duplicates or transfer pairs detected.
                 </p>
               </div>
             )}
@@ -121,14 +151,24 @@ export function DuplicateReconciliationModal({
               <div className="space-y-4">
                 {/* Summary badges */}
                 <div className="flex items-center gap-3 text-xs">
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full bg-[#10B981]" />
-                    {pairs.filter(p => p.confidence === 'exact').length} exact
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full bg-[#F59E0B]" />
-                    {pairs.filter(p => p.confidence === 'fuzzy').length} fuzzy
-                  </span>
+                  {pairs.some(p => p.confidence === 'exact') && (
+                    <span className="flex items-center gap-1">
+                      <div className="w-2 h-2 rounded-full bg-[#10B981]" />
+                      {pairs.filter(p => p.confidence === 'exact').length} exact
+                    </span>
+                  )}
+                  {pairs.some(p => p.confidence === 'fuzzy') && (
+                    <span className="flex items-center gap-1">
+                      <div className="w-2 h-2 rounded-full bg-[#F59E0B]" />
+                      {pairs.filter(p => p.confidence === 'fuzzy').length} fuzzy
+                    </span>
+                  )}
+                  {transferCount > 0 && (
+                    <span className="flex items-center gap-1">
+                      <div className="w-2 h-2 rounded-full bg-[#8B5CF6]" />
+                      {transferCount} transfer{transferCount !== 1 ? 's' : ''}
+                    </span>
+                  )}
                 </div>
 
                 {/* Pair rows */}
@@ -241,6 +281,8 @@ function DuplicatePairRow({
   onActionChange: (action: DuplicateAction) => void
   onSwapKeep: () => void
 }) {
+  const isTransfer = pair.pairType === 'transfer'
+
   const keep =
     pair.keepTransactionId === pair.transactionA.id
       ? pair.transactionA
@@ -250,7 +292,14 @@ function DuplicatePairRow({
       ? pair.transactionB
       : pair.transactionA
 
-  const confidenceColor = pair.confidence === 'exact' ? '#10B981' : '#F59E0B'
+  const confidenceColor =
+    isTransfer ? '#8B5CF6' :
+    pair.confidence === 'exact' ? '#10B981' : '#F59E0B'
+
+  const keepLabel = isTransfer ? 'Keep (Bank)' : 'Keep'
+  const removeLabel = isTransfer ? 'Remove (Credit Card)' : 'Remove'
+  const dismissLabel = isTransfer ? 'Not a Transfer' : 'Not a Duplicate'
+  const badgeLabel = isTransfer ? 'transfer' : `${pair.confidence} match`
 
   return (
     <div
@@ -263,12 +312,12 @@ function DuplicatePairRow({
       }`}
     >
       {/* Confidence badge + match reasons */}
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span
           className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full"
           style={{ backgroundColor: `${confidenceColor}15`, color: confidenceColor }}
         >
-          {pair.confidence} match
+          {badgeLabel}
         </span>
         {pair.matchReasons.map((reason, i) => (
           <span key={i} className="text-[10px] text-[#1F1410]/40">
@@ -283,8 +332,8 @@ function DuplicatePairRow({
         <div className="rounded-lg border-2 border-[#10B981]/30 bg-[#10B981]/[0.03] p-3">
           <div className="flex items-center gap-1.5 mb-2">
             <div className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-            <span className="text-[10px] font-semibold text-[#10B981] uppercase">Keep</span>
-            <span className="text-[10px] text-[#1F1410]/30 ml-auto">{keep.source}</span>
+            <span className="text-[10px] font-semibold text-[#10B981] uppercase">{keepLabel}</span>
+            <span className="text-[10px] text-[#1F1410]/30 ml-auto">{keep.source_name || keep.source}</span>
           </div>
           <p className="text-sm font-medium text-[#1F1410] truncate">{keep.merchant}</p>
           <div className="flex items-center gap-2 mt-1">
@@ -318,8 +367,8 @@ function DuplicatePairRow({
         <div className="rounded-lg border border-[#1F1410]/10 bg-[#1F1410]/[0.02] p-3">
           <div className="flex items-center gap-1.5 mb-2">
             <div className="w-1.5 h-1.5 rounded-full bg-[#1F1410]/30" />
-            <span className="text-[10px] font-semibold text-[#1F1410]/40 uppercase">Remove</span>
-            <span className="text-[10px] text-[#1F1410]/30 ml-auto">{discard.source}</span>
+            <span className="text-[10px] font-semibold text-[#1F1410]/40 uppercase">{removeLabel}</span>
+            <span className="text-[10px] text-[#1F1410]/30 ml-auto">{discard.source_name || discard.source}</span>
           </div>
           <p className="text-sm font-medium text-[#1F1410]/60 truncate">{discard.merchant}</p>
           <div className="flex items-center gap-2 mt-1">
@@ -350,16 +399,27 @@ function DuplicatePairRow({
         </div>
       </div>
 
+      {/* Transfer merge note */}
+      {isTransfer && pair.action === 'merge' && (
+        <p className="text-[10px] text-[#8B5CF6] mt-2">
+          Will be categorized as Credit Card Payment
+        </p>
+      )}
+
       {/* Action buttons */}
       <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#1F1410]/5">
-        {/* Swap button */}
-        <button
-          onClick={onSwapKeep}
-          className="flex items-center gap-1 text-xs text-[#1F1410]/40 hover:text-[#8B5CF6] transition-colors"
-        >
-          <ArrowLeftRight className="w-3 h-3" />
-          Swap
-        </button>
+        {/* Swap button — hidden for transfers (bank side must always be kept) */}
+        {isTransfer ? (
+          <div />
+        ) : (
+          <button
+            onClick={onSwapKeep}
+            className="flex items-center gap-1 text-xs text-[#1F1410]/40 hover:text-[#8B5CF6] transition-colors"
+          >
+            <ArrowLeftRight className="w-3 h-3" />
+            Swap
+          </button>
+        )}
 
         {/* Action toggles */}
         <div className="flex items-center gap-1.5">
@@ -383,7 +443,7 @@ function DuplicatePairRow({
             }`}
           >
             <Ban className="w-3 h-3" />
-            Not a Duplicate
+            {dismissLabel}
           </button>
           <button
             onClick={() => onActionChange('skip')}

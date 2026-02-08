@@ -1,6 +1,12 @@
 import { useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { detectDuplicates, computeMergedFields } from '../lib/duplicateDetection'
+import {
+  detectDuplicates,
+  computeMergedFields,
+  detectTransferPairs,
+  computeTransferMergedFields,
+} from '../lib/duplicateDetection'
+import type { AccountTypeMap } from '../lib/duplicateDetection'
 import type { Transaction } from '../types/transaction'
 import type {
   DuplicatePair,
@@ -27,11 +33,20 @@ function saveDismissedPairIds(ids: Set<string>) {
 
 export function useDuplicateReconciliation(
   transactions: Transaction[],
-  onComplete: () => void
+  onComplete: () => void,
+  options?: {
+    accountTypeMap?: AccountTypeMap
+    transferCategoryId?: string
+    transferCategoryName?: string
+  }
 ) {
   const [step, setStep] = useState<ReconciliationStep>('detecting')
   const [pairs, setPairs] = useState<DuplicatePair[]>([])
   const [result, setResult] = useState<ReconciliationResult | null>(null)
+
+  const accountTypeMap = options?.accountTypeMap
+  const transferCategoryId = options?.transferCategoryId
+  const transferCategoryName = options?.transferCategoryName
 
   /** Run detection against the provided transactions */
   const runDetection = useCallback(() => {
@@ -41,11 +56,17 @@ export function useDuplicateReconciliation(
     // Use setTimeout so the detecting spinner renders before blocking
     setTimeout(() => {
       const dismissed = loadDismissedPairIds()
-      const detected = detectDuplicates(transactions, dismissed)
-      setPairs(detected)
+      const duplicates = detectDuplicates(transactions, dismissed)
+
+      let transfers: DuplicatePair[] = []
+      if (accountTypeMap && accountTypeMap.size > 0) {
+        transfers = detectTransferPairs(transactions, accountTypeMap, dismissed)
+      }
+
+      setPairs([...duplicates, ...transfers])
       setStep('review')
     }, 50)
-  }, [transactions])
+  }, [transactions, accountTypeMap])
 
   /** Set action for a specific pair */
   const setPairAction = useCallback((pairId: string, action: DuplicateAction) => {
@@ -101,7 +122,10 @@ export function useDuplicateReconciliation(
 
       try {
         // Compute fields to adopt from discarded tx
-        const mergedFields = computeMergedFields(keep, discard)
+        const mergedFields =
+          pair.pairType === 'transfer' && transferCategoryId && transferCategoryName
+            ? computeTransferMergedFields(keep, discard, transferCategoryId, transferCategoryName)
+            : computeMergedFields(keep, discard)
 
         // Update kept transaction with merged fields if any
         if (Object.keys(mergedFields).length > 0) {

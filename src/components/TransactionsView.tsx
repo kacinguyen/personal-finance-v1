@@ -30,8 +30,10 @@ import { AddTransactionModal, TransactionFormData } from './AddTransactionModal'
 import { SplitTransactionModal } from './SplitTransactionModal'
 import { DuplicateReconciliationModal } from './DuplicateReconciliationModal'
 import { importCSVFiles } from '../lib/csvImport'
-import { detectDuplicates } from '../lib/duplicateDetection'
+import { detectDuplicates, detectTransferPairs } from '../lib/duplicateDetection'
+import type { AccountTypeMap } from '../lib/duplicateDetection'
 import type { DuplicatePair } from '../types/duplicateReconciliation'
+import type { AccountType } from '../types/account'
 import { supabase } from '../lib/supabase'
 import { getIcon, DEFAULT_COLOR } from '../lib/iconMap'
 import { useCategories } from '../hooks/useCategories'
@@ -136,6 +138,7 @@ export function TransactionsView() {
   const [showAddDropdown, setShowAddDropdown] = useState(false)
   const [isReconcileModalOpen, setIsReconcileModalOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [accountTypeMap, setAccountTypeMap] = useState<AccountTypeMap>(new Map())
 
   // Convert DB categories to UI categories with resolved icons (all categories for filtering)
   const allUiCategories = useMemo<UICategory[]>(() => {
@@ -282,6 +285,26 @@ export function TransactionsView() {
   useEffect(() => {
     refetchCategories()
   }, [refetchCategories])
+
+  // Fetch accounts to build plaid_account_id → account_type map
+  useEffect(() => {
+    async function fetchAccountTypes() {
+      const { data } = await supabase
+        .from('accounts')
+        .select('plaid_account_id, account_type')
+        .not('plaid_account_id', 'is', null)
+      if (data) {
+        const map: AccountTypeMap = new Map()
+        for (const row of data) {
+          if (row.plaid_account_id) {
+            map.set(row.plaid_account_id, row.account_type as AccountType)
+          }
+        }
+        setAccountTypeMap(map)
+      }
+    }
+    fetchAccountTypes()
+  }, [])
 
   // Load transactions when selected month or categories change
   useEffect(() => {
@@ -571,18 +594,27 @@ export function TransactionsView() {
     ? allUiCategories.find(c => c.id === filters.categoryId)
     : null
 
-  // Duplicate detection map for detail panel
+  // Find "Credit Card Payment" category for transfer reconciliation
+  const ccPaymentCategory = useMemo(() => {
+    return transferCategories.find(c => c.name === 'Credit Card Payment') || null
+  }, [transferCategories])
+
+  // Duplicate + transfer detection map for detail panel
   const duplicateMap = useMemo(() => {
-    const pairs = detectDuplicates(rawTransactions)
+    const dupPairs = detectDuplicates(rawTransactions)
+    const transferPairs = accountTypeMap.size > 0
+      ? detectTransferPairs(rawTransactions, accountTypeMap)
+      : []
+    const allPairs = [...dupPairs, ...transferPairs]
     const map = new Map<string, DuplicatePair[]>()
-    for (const pair of pairs) {
+    for (const pair of allPairs) {
       const aId = pair.transactionA.id
       const bId = pair.transactionB.id
       map.set(aId, [...(map.get(aId) || []), pair])
       map.set(bId, [...(map.get(bId) || []), pair])
     }
     return map
-  }, [rawTransactions])
+  }, [rawTransactions, accountTypeMap])
 
   const activeFilterCount = [
     filters.type !== 'all',
@@ -1051,29 +1083,46 @@ export function TransactionsView() {
                   )}
                 </div>
 
-                {/* Potential Duplicate Warning */}
-                {duplicateMap.has(selectedTransaction.id) && (
-                  <div className="mt-4 p-3 rounded-xl bg-[#F59E0B]/10 border border-[#F59E0B]/20">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 text-[#F59E0B] mt-0.5 flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-[#92400E]">
-                          Potential Duplicate
-                        </p>
-                        <p className="text-xs text-[#92400E]/70 mt-0.5">
-                          {duplicateMap.get(selectedTransaction.id)!.length} possible {duplicateMap.get(selectedTransaction.id)!.length === 1 ? 'match' : 'matches'} found
-                        </p>
-                        <button
-                          onClick={() => setIsReconcileModalOpen(true)}
-                          className="flex items-center gap-1.5 mt-2 text-xs font-medium text-[#92400E] hover:text-[#78350F] transition-colors"
-                        >
-                          <GitMerge className="w-3.5 h-3.5" />
-                          Resolve
-                        </button>
+                {/* Potential Duplicate / Transfer Warning */}
+                {duplicateMap.has(selectedTransaction.id) && (() => {
+                  const matchPairs = duplicateMap.get(selectedTransaction.id)!
+                  const hasTransfer = matchPairs.some(p => p.pairType === 'transfer')
+                  const hasDuplicate = matchPairs.some(p => p.pairType === 'duplicate')
+                  const bgColor = hasTransfer && !hasDuplicate ? '#8B5CF6' : '#F59E0B'
+                  const label = hasTransfer && !hasDuplicate
+                    ? 'Potential Transfer'
+                    : hasDuplicate && !hasTransfer
+                    ? 'Potential Duplicate'
+                    : 'Potential Duplicate / Transfer'
+                  const textColor = hasTransfer && !hasDuplicate ? '#6D28D9' : '#92400E'
+                  const textColorHover = hasTransfer && !hasDuplicate ? '#5B21B6' : '#78350F'
+
+                  return (
+                    <div className="mt-4 p-3 rounded-xl border" style={{ backgroundColor: `${bgColor}10`, borderColor: `${bgColor}33` }}>
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: bgColor }} />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium" style={{ color: textColor }}>
+                            {label}
+                          </p>
+                          <p className="text-xs mt-0.5" style={{ color: `${textColor}B3` }}>
+                            {matchPairs.length} possible {matchPairs.length === 1 ? 'match' : 'matches'} found
+                          </p>
+                          <button
+                            onClick={() => setIsReconcileModalOpen(true)}
+                            className="flex items-center gap-1.5 mt-2 text-xs font-medium transition-colors"
+                            style={{ color: textColor }}
+                            onMouseEnter={e => (e.currentTarget.style.color = textColorHover)}
+                            onMouseLeave={e => (e.currentTarget.style.color = textColor)}
+                          >
+                            <GitMerge className="w-3.5 h-3.5" />
+                            Resolve
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
 
                 {/* Action Buttons */}
                 <div className="flex items-center gap-4 mt-6 pt-6 border-t border-[#1F1410]/5">
@@ -1157,6 +1206,9 @@ export function TransactionsView() {
         onClose={() => setIsReconcileModalOpen(false)}
         transactions={rawTransactions}
         onComplete={fetchTransactions}
+        accountTypeMap={accountTypeMap}
+        transferCategoryId={ccPaymentCategory?.id}
+        transferCategoryName={ccPaymentCategory?.name}
       />
 
       {/* Fixed-position Filter Dropdown (rendered outside overflow-hidden container) */}

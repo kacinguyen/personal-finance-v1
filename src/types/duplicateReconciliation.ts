@@ -1,6 +1,6 @@
 import type { Transaction, TransactionSource } from './transaction'
 
-export type DuplicateMatchConfidence = 'exact' | 'fuzzy'
+export type DuplicateMatchConfidence = 'exact' | 'fuzzy' | 'transfer'
 
 export type DuplicateAction = 'merge' | 'dismiss' | 'skip'
 
@@ -8,14 +8,15 @@ export type ReconciliationStep = 'detecting' | 'review' | 'processing' | 'comple
 
 export type DuplicatePair = {
   id: string // deterministic: sorted ids joined with '-'
-  transactionA: Transaction // higher source priority (kept by default)
-  transactionB: Transaction // lower source priority (discarded by default)
+  transactionA: Transaction // higher source priority (kept by default); for transfers: checking/savings side
+  transactionB: Transaction // lower source priority (discarded by default); for transfers: credit card side
   confidence: DuplicateMatchConfidence
   matchReasons: string[]
   merchantSimilarity: number
   dateDiffDays: number
   action: DuplicateAction
   keepTransactionId: string // which tx to keep (defaults to transactionA.id)
+  pairType: 'duplicate' | 'transfer'
 }
 
 export type ReconciliationResult = {
