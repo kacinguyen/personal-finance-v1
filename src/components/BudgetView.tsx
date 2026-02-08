@@ -16,7 +16,8 @@ import { supabase } from '../lib/supabase'
 import { useUser } from '../hooks/useUser'
 import { useCategories } from '../hooks/useCategories'
 import { getIcon, availableIcons, availableColors } from '../lib/iconMap'
-import { MonthPicker, getMonthRange } from './MonthPicker'
+import { MonthPicker } from './MonthPicker'
+import { useExpectedIncome } from '../hooks/useExpectedIncome'
 import type { CategoryType } from '../types/category'
 
 // Database budget type with joined category data
@@ -471,11 +472,12 @@ export function BudgetView() {
   const [budgets, setBudgets] = useState<CategoryBudget[]>([])
   const [loading, setLoading] = useState(true)
   const [seeding, setSeeding] = useState(false)
-  const [expectedIncome, setExpectedIncome] = useState(0)
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), 1)
   })
+
+  const { expectedIncome } = useExpectedIncome(selectedMonth)
 
   // Add category dropdown state
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
@@ -601,75 +603,11 @@ export function BudgetView() {
     }
   }, [])
 
-  // Fetch expected income from paystubs for selected month
-  // Smart logic: use selected month if available, otherwise use most recent month's data
-  const fetchExpectedIncome = useCallback(async () => {
-    const { startOfMonth, endOfMonth } = getMonthRange(selectedMonth)
-
-    // First try to get paystubs for the selected month
-    const { data: selectedMonthData, error: selectedError } = await supabase
-      .from('paystubs')
-      .select('net_pay, pay_date')
-      .gte('pay_date', startOfMonth)
-      .lte('pay_date', endOfMonth)
-
-    if (selectedError) {
-      console.error('Error fetching paystubs:', selectedError)
-      return
-    }
-
-    if (selectedMonthData && selectedMonthData.length > 0) {
-      const total = selectedMonthData.reduce((sum, p) => sum + Number(p.net_pay), 0)
-      setExpectedIncome(total)
-      return
-    }
-
-    // No data for selected month - fetch recent data to use as estimate
-    const sixMonthsAgo = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 6, 1).toISOString().split('T')[0]
-
-    const { data, error } = await supabase
-      .from('paystubs')
-      .select('net_pay, pay_date')
-      .gte('pay_date', sixMonthsAgo)
-      .order('pay_date', { ascending: false })
-
-    if (error) {
-      console.error('Error fetching paystubs:', error)
-      return
-    }
-
-    if (!data || data.length === 0) {
-      setExpectedIncome(0)
-      return
-    }
-
-    // Group paystubs by month and use most recent
-    const paysByMonth: Record<string, number> = {}
-    data.forEach((p) => {
-      const payDate = new Date(p.pay_date)
-      const monthKey = `${payDate.getFullYear()}-${payDate.getMonth()}`
-      paysByMonth[monthKey] = (paysByMonth[monthKey] || 0) + Number(p.net_pay)
-    })
-
-    const sortedMonths = Object.keys(paysByMonth).sort((a, b) => {
-      const [yearA, monthA] = a.split('-').map(Number)
-      const [yearB, monthB] = b.split('-').map(Number)
-      return yearB - yearA || monthB - monthA
-    })
-
-    if (sortedMonths.length > 0) {
-      setExpectedIncome(paysByMonth[sortedMonths[0]])
-    } else {
-      setExpectedIncome(0)
-    }
-  }, [selectedMonth])
-
   // Fetch on mount and when selected month changes
   useEffect(() => {
     fetchBudgets()
     fetchSavingsGoals()
-    fetchExpectedIncome()
-  }, [fetchBudgets, fetchSavingsGoals, fetchExpectedIncome, selectedMonth])
+  }, [fetchBudgets, fetchSavingsGoals, selectedMonth])
 
   // Separate categories by type and group by parent
   const needsCategories = useMemo(

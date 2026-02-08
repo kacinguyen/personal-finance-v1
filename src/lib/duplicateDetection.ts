@@ -139,9 +139,8 @@ function orderBySourcePriority(
  * Algorithm:
  * 1. Group transactions by amount in integer cents
  * 2. Within each group, compare all pairs
- * 3. Skip Plaid↔Plaid pairs (handled by DB unique constraint)
- * 4. Classify as exact or fuzzy match based on date + merchant similarity
- * 5. Exclude previously dismissed pairs
+ * 3. Classify as exact or fuzzy match based on date + merchant similarity
+ * 4. Exclude previously dismissed pairs
  */
 export function detectDuplicates(
   transactions: Transaction[],
@@ -165,9 +164,6 @@ export function detectDuplicates(
       for (let j = i + 1; j < group.length; j++) {
         const txA = group[i]
         const txB = group[j]
-
-        // Skip Plaid↔Plaid — already deduplicated by plaid_transaction_id
-        if (txA.source === 'plaid' && txB.source === 'plaid') continue
 
         const pairId = makePairId(txA.id, txB.id)
 

@@ -21,7 +21,10 @@ import { supabase } from '../lib/supabase'
 import { getIcon, DEFAULT_COLOR } from '../lib/iconMap'
 import { useCategories } from '../hooks/useCategories'
 import { STATUS_COLORS } from '../lib/colors'
+import { SpendingVelocityChart } from './SpendingVelocityChart'
+import { CategorySpendingHeatmap } from './CategorySpendingHeatmap'
 import { MonthPicker, getMonthRange, getMonthData } from './MonthPicker'
+import { useExpectedIncome } from '../hooks/useExpectedIncome'
 import type { Transaction as DBTransaction } from '../types/transaction'
 import { useUser } from '../hooks/useUser'
 
@@ -144,64 +147,8 @@ export function TransactionFeed() {
     setLoading(false)
   }, [mapDBToUI, selectedMonth, excludedCategoryIds])
 
-  // Paystubs for expected income calculation
-  const [allPaystubs, setAllPaystubs] = useState<{ pay_date: string; net_pay: number }[]>([])
-
-  // Fetch all paystubs (we'll filter by month client-side for fallback logic)
-  const fetchExpectedIncome = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('paystubs')
-      .select('pay_date, net_pay')
-      .order('pay_date', { ascending: false })
-
-    if (error) {
-      console.error('Error fetching paystubs:', error)
-    } else if (data) {
-      setAllPaystubs(data)
-    }
-  }, [])
-
-  // Calculate expected income with fallback to most recent month (matches Income page logic)
-  const { expectedIncome, usingHistoricalIncome } = useMemo(() => {
-    // Filter paystubs for selected month
-    const selectedMonthPaystubs = allPaystubs.filter((p) => {
-      const payDate = new Date(p.pay_date)
-      return payDate.getMonth() === selectedMonth.getMonth() && payDate.getFullYear() === selectedMonth.getFullYear()
-    })
-
-    // If selected month has data, use it
-    if (selectedMonthPaystubs.length > 0) {
-      return {
-        expectedIncome: selectedMonthPaystubs.reduce((sum, p) => sum + Number(p.net_pay), 0),
-        usingHistoricalIncome: false,
-      }
-    }
-
-    // No selected month data - group by month and use most recent
-    if (allPaystubs.length > 0) {
-      const paysByMonth: Record<string, number> = {}
-      allPaystubs.forEach((p) => {
-        const payDate = new Date(p.pay_date)
-        const monthKey = `${payDate.getFullYear()}-${payDate.getMonth()}`
-        paysByMonth[monthKey] = (paysByMonth[monthKey] || 0) + Number(p.net_pay)
-      })
-
-      const sortedMonths = Object.keys(paysByMonth).sort((a, b) => {
-        const [yearA, monthA] = a.split('-').map(Number)
-        const [yearB, monthB] = b.split('-').map(Number)
-        return yearB - yearA || monthB - monthA
-      })
-
-      if (sortedMonths.length > 0) {
-        return {
-          expectedIncome: paysByMonth[sortedMonths[0]],
-          usingHistoricalIncome: true,
-        }
-      }
-    }
-
-    return { expectedIncome: 0, usingHistoricalIncome: false }
-  }, [allPaystubs, selectedMonth])
+  // Expected income from shared hook (transaction-based with salary projection)
+  const { expectedIncome, isProjected: usingHistoricalIncome } = useExpectedIncome(selectedMonth)
 
   // Fetch budgets from database
   const fetchBudgets = useCallback(async () => {
@@ -227,19 +174,48 @@ export function TransactionFeed() {
     }
   }, [])
 
+  // Previous month expense transactions (for spending velocity chart)
+  const [prevMonthTransactions, setPrevMonthTransactions] = useState<{ date: string; amount: number }[]>([])
+
+  const fetchPrevMonthTransactions = useCallback(async () => {
+    const prevMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1)
+    const { startOfMonth, endOfMonth } = getMonthRange(prevMonth)
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('date, amount, category_id')
+      .gte('date', startOfMonth)
+      .lte('date', endOfMonth)
+
+    if (error) {
+      console.error('Error fetching prev month transactions:', error)
+    } else if (data) {
+      const filtered = data.filter(
+        (tx: { date: string; amount: number; category_id: string | null }) =>
+          !tx.category_id || !excludedCategoryIds.has(tx.category_id)
+      )
+      setPrevMonthTransactions(filtered.map((tx: { date: string; amount: number }) => ({ date: tx.date, amount: tx.amount })))
+    }
+  }, [selectedMonth, excludedCategoryIds])
+
+  // Current month transaction data for velocity chart (lightweight: just date + amount)
+  const currentMonthVelocityData = useMemo(() => {
+    return transactions.map(t => ({ date: t.rawDate, amount: t.amount }))
+  }, [transactions])
+
   // Refetch categories on mount to sync with any changes made on other pages (e.g., Budget)
   useEffect(() => {
     refetchCategories()
   }, [refetchCategories])
 
-  // Load transactions, expected income, and budgets when selected month or categories change
+  // Load transactions and budgets when selected month or categories change
   useEffect(() => {
     if (dbCategories.length > 0) {
       fetchTransactions()
+      fetchPrevMonthTransactions()
     }
-    fetchExpectedIncome()
     fetchBudgets()
-  }, [fetchTransactions, fetchExpectedIncome, fetchBudgets, dbCategories.length, selectedMonth])
+  }, [fetchTransactions, fetchBudgets, fetchPrevMonthTransactions, dbCategories.length, selectedMonth])
 
   // Calculate month data based on selected month
   const monthData = useMemo(() => {
@@ -523,6 +499,20 @@ export function TransactionFeed() {
             </div>
           </div>
         </motion.div>
+
+        {/* Spending Velocity Chart */}
+        <SpendingVelocityChart
+          currentMonthTransactions={currentMonthVelocityData}
+          previousMonthTransactions={prevMonthTransactions}
+          totalBudget={budgetTracking.totalBudget}
+          selectedMonth={selectedMonth}
+        />
+
+        {/* Category Spending Heatmap */}
+        <CategorySpendingHeatmap
+          categories={dbCategories}
+          excludedCategoryIds={excludedCategoryIds}
+        />
 
         {/* Two Column Layout: Budgets (Left) and Transactions (Right) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

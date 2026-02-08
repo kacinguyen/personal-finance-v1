@@ -7,7 +7,6 @@ import {
   TrendingDown,
   DollarSign,
   Briefcase,
-  LucideIcon,
   Loader2,
   AlertCircle,
   CheckCircle,
@@ -18,10 +17,14 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { processPaystubPDF, type ImportResult } from '../lib/paystubImport'
+import { PaycheckWaterfallChart } from './PaycheckWaterfallChart'
 import { isPDFFile } from '../lib/pdfExtractor'
 import { PaystubReviewModal } from './PaystubReviewModal'
 import { supabase } from '../lib/supabase'
-import { MonthPicker, formatMonth } from './MonthPicker'
+import { MonthPicker, formatMonth, getMonthRange } from './MonthPicker'
+import { useCategories } from '../hooks/useCategories'
+import { getIcon, DEFAULT_COLOR } from '../lib/iconMap'
+import type { Transaction } from '../types/transaction'
 
 type PaystubRecord = {
   id: string
@@ -39,13 +42,24 @@ type PaystubRecord = {
   employer_401k_match: number | null
   hsa_contribution: number | null
   espp_contribution: number | null
-}
-
-type IncomeSource = {
-  name: string
-  amount: number
-  icon: LucideIcon
-  color: string
+  // Pre-tax deductions
+  health_insurance: number | null
+  dental_insurance: number | null
+  vision_insurance: number | null
+  life_insurance: number | null
+  ad_and_d_insurance: number | null
+  fsa_contribution: number | null
+  other_pretax: number | null
+  // Taxes
+  federal_income_tax: number | null
+  state_income_tax: number | null
+  social_security_tax: number | null
+  medicare_tax: number | null
+  local_tax: number | null
+  state_disability_insurance: number | null
+  other_taxes: number | null
+  // Post-tax deductions
+  other_posttax: number | null
 }
 
 
@@ -77,7 +91,7 @@ export function IncomeView() {
     setLoadingPaystubs(true)
     const { data, error } = await supabase
       .from('paystubs')
-      .select('id, pay_date, net_pay, gross_pay, bonus_pay, dividend_equivalent, employer_name, source_file_name, traditional_401k, roth_401k, after_tax_401k, employer_401k_match, hsa_contribution, espp_contribution')
+      .select('id, pay_date, net_pay, gross_pay, bonus_pay, dividend_equivalent, employer_name, source_file_name, traditional_401k, roth_401k, after_tax_401k, employer_401k_match, hsa_contribution, espp_contribution, health_insurance, dental_insurance, vision_insurance, life_insurance, ad_and_d_insurance, fsa_contribution, other_pretax, federal_income_tax, state_income_tax, social_security_tax, medicare_tax, local_tax, state_disability_insurance, other_taxes, other_posttax')
       .order('pay_date', { ascending: false })
 
     if (error) {
@@ -92,6 +106,114 @@ export function IncomeView() {
   useEffect(() => {
     fetchPaystubs()
   }, [fetchPaystubs])
+
+  // Income transactions (all income categories)
+  const { incomeCategories, findCategoryById } = useCategories()
+
+  const incomeCategoryIds = useMemo(
+    () => incomeCategories.map(c => c.id),
+    [incomeCategories]
+  )
+
+  const salaryCategoryId = useMemo(
+    () => incomeCategories.find(c => c.name === 'Salary')?.id,
+    [incomeCategories]
+  )
+
+  const [incomeTransactions, setIncomeTransactions] = useState<Transaction[]>([])
+  const [loadingIncomeTransactions, setLoadingIncomeTransactions] = useState(false)
+  const [prevMonthSalaryTotal, setPrevMonthSalaryTotal] = useState(0)
+
+  const fetchIncomeTransactions = useCallback(async () => {
+    if (incomeCategoryIds.length === 0) {
+      setIncomeTransactions([])
+      setPrevMonthSalaryTotal(0)
+      return
+    }
+    setLoadingIncomeTransactions(true)
+    const { startOfMonth, endOfMonth } = getMonthRange(selectedMonth)
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .in('category_id', incomeCategoryIds)
+      .gte('date', startOfMonth)
+      .lte('date', endOfMonth)
+      .order('date', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching income transactions:', error)
+    } else if (data) {
+      setIncomeTransactions(data as Transaction[])
+    }
+
+    // Fetch previous month salary transactions (for 0-check fallback)
+    if (salaryCategoryId) {
+      const prevMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1)
+      const { startOfMonth: prevStart, endOfMonth: prevEnd } = getMonthRange(prevMonth)
+      const { data: prevData, error: prevError } = await supabase
+        .from('transactions')
+        .select('amount')
+        .eq('category_id', salaryCategoryId)
+        .gte('date', prevStart)
+        .lte('date', prevEnd)
+
+      if (prevError) {
+        console.error('Error fetching prev month salary:', prevError)
+        setPrevMonthSalaryTotal(0)
+      } else {
+        setPrevMonthSalaryTotal((prevData || []).reduce((sum, tx) => sum + Math.abs(tx.amount), 0))
+      }
+    } else {
+      setPrevMonthSalaryTotal(0)
+    }
+
+    setLoadingIncomeTransactions(false)
+  }, [selectedMonth, incomeCategoryIds, salaryCategoryId])
+
+  useEffect(() => {
+    fetchIncomeTransactions()
+  }, [fetchIncomeTransactions])
+
+  // Split income transactions into salary vs other
+  const { salaryTransactions, salaryTransactionIncome, otherIncome } = useMemo(() => {
+    const salary: Transaction[] = []
+    const otherGrouped = new Map<string, { transactions: Transaction[]; total: number }>()
+
+    for (const tx of incomeTransactions) {
+      if (tx.category_id === salaryCategoryId) {
+        salary.push(tx)
+      } else {
+        const key = tx.category_id || 'uncategorized'
+        const group = otherGrouped.get(key) || { transactions: [], total: 0 }
+        group.transactions.push(tx)
+        group.total += Math.abs(tx.amount)
+        otherGrouped.set(key, group)
+      }
+    }
+
+    const salaryTotal = salary.reduce((sum, tx) => sum + Math.abs(tx.amount), 0)
+
+    const otherCategories = Array.from(otherGrouped.entries()).map(([catId, group]) => {
+      const cat = catId !== 'uncategorized' ? findCategoryById(catId) : undefined
+      const IconComponent = getIcon(cat?.icon)
+      return {
+        name: cat?.name || 'Other',
+        amount: group.total,
+        icon: IconComponent,
+        color: cat?.color || DEFAULT_COLOR,
+        count: group.transactions.length,
+        transactions: group.transactions,
+      }
+    })
+
+    const otherTotal = otherCategories.reduce((sum, c) => sum + c.amount, 0)
+
+    return {
+      salaryTransactions: salary,
+      salaryTransactionIncome: salaryTotal,
+      otherIncome: { categories: otherCategories, total: otherTotal },
+    }
+  }, [incomeTransactions, salaryCategoryId, findCategoryById])
 
   // Calculate income from paystubs for selected month
   const selectedMonthPaystubs = useMemo(() => {
@@ -116,20 +238,16 @@ export function IncomeView() {
     return grouped
   }, [paystubs])
 
-  // Determine which paystubs to show and use for income
-  const { displayPaystubs, salaryIncome, usingHistoricalData } = useMemo(() => {
+  // Determine which paystubs to show for contributions/waterfall
+  const displayPaystubs = useMemo(() => {
     const selectedMonthKey = `${selectedMonth.getFullYear()}-${selectedMonth.getMonth()}`
 
     // If selected month has data, use it
     if (selectedMonthPaystubs.length > 0) {
-      return {
-        displayPaystubs: selectedMonthPaystubs,
-        salaryIncome: selectedMonthPaystubs.reduce((sum, p) => sum + Number(p.net_pay), 0),
-        usingHistoricalData: false,
-      }
+      return selectedMonthPaystubs
     }
 
-    // No selected month data, use most recent month
+    // No selected month data, use most recent month for contributions/waterfall
     if (Object.keys(paysByMonth).length > 0) {
       const sortedMonths = Object.keys(paysByMonth).sort((a, b) => {
         const [yearA, monthA] = a.split('-').map(Number)
@@ -138,28 +256,29 @@ export function IncomeView() {
       })
 
       if (sortedMonths.length > 0 && sortedMonths[0] !== selectedMonthKey) {
-        const recentMonth = paysByMonth[sortedMonths[0]]
-        return {
-          displayPaystubs: recentMonth.paystubs,
-          salaryIncome: recentMonth.total,
-          usingHistoricalData: true,
-        }
+        return paysByMonth[sortedMonths[0]].paystubs
       }
     }
 
-    return {
-      displayPaystubs: [] as PaystubRecord[],
-      salaryIncome: 0,
-      usingHistoricalData: false,
-    }
+    return [] as PaystubRecord[]
   }, [selectedMonth, selectedMonthPaystubs, paysByMonth])
 
-  // Build income sources from paystub data
-  const incomeSources: IncomeSource[] = salaryIncome > 0
-    ? [{ name: 'Salary', amount: salaryIncome, icon: Briefcase, color: '#10B981' }]
-    : []
+  // Salary projection logic
+  const { expectedSalaryIncome, isProjected, projectionBasis } = useMemo(() => {
+    if (salaryTransactions.length >= 2) {
+      return { expectedSalaryIncome: salaryTransactionIncome, isProjected: false, projectionBasis: 'actual' as const }
+    } else if (salaryTransactions.length === 1) {
+      return { expectedSalaryIncome: salaryTransactionIncome * 2, isProjected: true, projectionBasis: 'one-check' as const }
+    } else {
+      return {
+        expectedSalaryIncome: prevMonthSalaryTotal,
+        isProjected: prevMonthSalaryTotal > 0,
+        projectionBasis: 'previous-month' as const,
+      }
+    }
+  }, [salaryTransactions.length, salaryTransactionIncome, prevMonthSalaryTotal])
 
-  const totalExpectedIncome = incomeSources.reduce((sum, source) => sum + source.amount, 0)
+  const totalExpectedIncome = expectedSalaryIncome + otherIncome.total
 
   // Previous month income for comparison (relative to selected month)
   const previousMonthIncome = useMemo(() => {
@@ -358,11 +477,12 @@ export function IncomeView() {
                     </div>
                   </div>
                   <p className="text-xs text-[#1F1410]/40 mt-2">
-                    {usingHistoricalData ? (
-                      <>Based on {displayPaystubs.length} paycheck{displayPaystubs.length !== 1 ? 's' : ''} from previous month</>
-                    ) : (
-                      <>Based on {selectedMonthPaystubs.length} paycheck{selectedMonthPaystubs.length !== 1 ? 's' : ''} for {formatMonth(selectedMonth)}</>
-                    )}
+                    {isProjected
+                      ? projectionBasis === 'one-check'
+                        ? `Projected from 1 paycheck (${incomeTransactions.length} income transaction${incomeTransactions.length !== 1 ? 's' : ''})`
+                        : `Based on last month's salary (${incomeTransactions.length} income transaction${incomeTransactions.length !== 1 ? 's' : ''})`
+                      : `Based on ${incomeTransactions.length} income transaction${incomeTransactions.length !== 1 ? 's' : ''} for ${formatMonth(selectedMonth)}`
+                    }
                   </p>
                 </div>
                 <motion.div
@@ -375,31 +495,45 @@ export function IncomeView() {
                 </motion.div>
               </div>
 
-              {/* Income Sources Breakdown */}
+              {/* Salary Income Breakdown */}
               <div className="space-y-3">
-                <div className="flex items-center gap-2 mb-3">
-                  <p className="text-sm font-semibold text-[#1F1410]/70">Salary Income</p>
-                  {usingHistoricalData && (
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F59E0B]/10 text-[#F59E0B]">
-                      Based on recent data
-                    </span>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-[#1F1410]/70">Salary Income</p>
+                    {isProjected && (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F59E0B]/10 text-[#F59E0B]">
+                        {projectionBasis === 'one-check' ? 'Projected' : 'Est.'}
+                      </span>
+                    )}
+                  </div>
+                  {expectedSalaryIncome > 0 && (
+                    <div className="flex items-center gap-2">
+                      {isProjected && salaryTransactionIncome > 0 && (
+                        <span className="text-xs text-[#1F1410]/40">
+                          ${salaryTransactionIncome.toLocaleString()} received
+                        </span>
+                      )}
+                      <span className="text-sm font-bold text-[#10B981]">
+                        ${expectedSalaryIncome.toLocaleString()}
+                      </span>
+                    </div>
                   )}
                 </div>
-                {loadingPaystubs ? (
+                {loadingIncomeTransactions ? (
                   <div className="flex items-center justify-center py-4">
                     <Loader2 className="w-5 h-5 text-[#10B981] animate-spin" />
                   </div>
-                ) : displayPaystubs.length === 0 ? (
+                ) : salaryTransactions.length === 0 ? (
                   <p className="text-sm text-[#1F1410]/40 py-4 text-center">
-                    No paychecks uploaded yet
+                    No salary transactions for this month
                   </p>
                 ) : (
-                  displayPaystubs.map((paystub, index) => {
-                    const percentage = totalExpectedIncome > 0 ? (Number(paystub.net_pay) / totalExpectedIncome) * 100 : 0
-                    const payDate = new Date(paystub.pay_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                  salaryTransactions.map((tx, index) => {
+                    const percentage = totalExpectedIncome > 0 ? (Math.abs(tx.amount) / totalExpectedIncome) * 100 : 0
+                    const txDate = new Date(tx.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
                     return (
                       <motion.div
-                        key={paystub.id}
+                        key={tx.id}
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: 0.5 + index * 0.1, duration: 0.3 }}
@@ -414,10 +548,10 @@ export function IncomeView() {
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-sm font-medium text-[#1F1410]">
-                              Paycheck ({payDate})
+                              {tx.merchant || 'Salary'} ({txDate})
                             </span>
                             <span className="text-sm font-bold text-[#1F1410]">
-                              ${Number(paystub.net_pay).toLocaleString()}
+                              ${Math.abs(tx.amount).toLocaleString()}
                             </span>
                           </div>
                           <div className="h-1.5 bg-[#1F1410]/5 rounded-full overflow-hidden">
@@ -436,6 +570,76 @@ export function IncomeView() {
                 )}
               </div>
             </motion.div>
+
+            {/* Other Income */}
+            {(otherIncome.categories.length > 0 || loadingIncomeTransactions) && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.35, duration: 0.4 }}
+                className="bg-white rounded-2xl p-6 shadow-sm"
+                style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-sm font-semibold text-[#1F1410]/70">Other Income</p>
+                  {otherIncome.total > 0 && (
+                    <span className="text-lg font-bold text-[#10B981]">
+                      ${otherIncome.total.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                {loadingIncomeTransactions ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="w-5 h-5 text-[#10B981] animate-spin" />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {otherIncome.categories.map((cat) => {
+                      const CatIcon = cat.icon
+                      return (
+                        <div key={cat.name}>
+                          <div className="flex items-center gap-3 mb-2">
+                            <div
+                              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                              style={{ backgroundColor: cat.color + '26' }}
+                            >
+                              <CatIcon className="w-4 h-4" style={{ color: cat.color }} />
+                            </div>
+                            <div className="flex-1 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-[#1F1410]">{cat.name}</span>
+                                <span className="text-xs text-[#1F1410]/40">
+                                  {cat.count} transaction{cat.count !== 1 ? 's' : ''}
+                                </span>
+                              </div>
+                              <span className="text-sm font-bold text-[#1F1410]">
+                                ${cat.amount.toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="ml-11 space-y-1">
+                            {cat.transactions.map((tx) => (
+                              <div key={tx.id} className="flex items-center justify-between text-xs">
+                                <span className="text-[#1F1410]/50">
+                                  {new Date(tx.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  {tx.merchant ? ` — ${tx.merchant}` : ''}
+                                </span>
+                                <span className="text-[#1F1410]/60 font-medium">
+                                  ${Math.abs(tx.amount).toLocaleString()}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {/* Paycheck Waterfall Chart */}
+            <PaycheckWaterfallChart paystubs={displayPaystubs} />
 
             {/* Data Sources Widget */}
             <motion.div
