@@ -124,7 +124,7 @@ export function parseBudgetCSV(text: string): CSVParseResult {
     let type: CategoryType | undefined
     if (typeIndex !== -1 && values[typeIndex]) {
       const typeValue = values[typeIndex].toLowerCase().trim()
-      if (['need', 'want', 'income', 'transfer'].includes(typeValue)) {
+      if (['need', 'want', 'income', 'transfer', 'savings_funded'].includes(typeValue)) {
         type = typeValue as CategoryType
       }
     }

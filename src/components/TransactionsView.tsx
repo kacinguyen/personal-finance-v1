@@ -145,10 +145,10 @@ export function TransactionsView() {
     return dbCategories.map(dbCategoryToUI)
   }, [dbCategories])
 
-  // Categories for expenses only (need/want) for adding transactions
+  // Categories for expenses only (need/want/savings_funded) for adding transactions
   const expenseCategories = useMemo<UICategory[]>(() => {
     return dbCategories
-      .filter(c => c.category_type === 'need' || c.category_type === 'want')
+      .filter(c => c.category_type === 'need' || c.category_type === 'want' || c.category_type === 'savings_funded')
       .map(dbCategoryToUI)
   }, [dbCategories])
 

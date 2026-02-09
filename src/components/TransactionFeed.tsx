@@ -84,7 +84,7 @@ export function TransactionFeed() {
   // Convert DB categories to UI categories with resolved icons
   const uiCategories = useMemo<UICategory[]>(() => {
     return dbCategories
-      .filter(c => c.category_type === 'need' || c.category_type === 'want')
+      .filter(c => c.category_type === 'need' || c.category_type === 'want' || c.category_type === 'savings_funded')
       .map(dbCategoryToUI)
   }, [dbCategories])
 

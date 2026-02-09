@@ -26,6 +26,24 @@ serve(async (req) => {
 
     if (itemError || !item) throw new Error('Plaid item not found')
 
+    // Pre-fetch user's categories and merchant rules for category resolution
+    const { data: userCategories } = await supabase
+      .from('categories')
+      .select('id, normalized_name')
+      .eq('user_id', userId)
+
+    const { data: merchantRules } = await supabase
+      .from('merchant_category_rules')
+      .select('pattern, match_type, category_id')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .order('priority', { ascending: false })
+
+    const categoryMap = new Map<string, string>()
+    for (const cat of userCategories || []) {
+      categoryMap.set(cat.normalized_name, cat.id)
+    }
+
     let cursor = item.transaction_sync_cursor || undefined
     let added = 0
     let modified = 0
@@ -48,23 +66,39 @@ serve(async (req) => {
 
       // Process added transactions
       for (const tx of syncData.added) {
+        const mapped = mapTransaction(tx, userId, item.institution_name)
+        const resolvedCategoryId = resolveCategoryId(
+          mapped.merchant,
+          mapped.category,
+          categoryMap,
+          merchantRules || [],
+        )
+        if (resolvedCategoryId) {
+          mapped.category_id = resolvedCategoryId
+          mapped.needs_review = false
+        }
         const { error } = await supabase
           .from('transactions')
-          .upsert(
-            mapTransaction(tx, userId, item.institution_name),
-            { onConflict: 'plaid_transaction_id' },
-          )
+          .upsert(mapped, { onConflict: 'plaid_transaction_id' })
         if (!error) added++
       }
 
       // Process modified transactions
       for (const tx of syncData.modified) {
+        const mapped = mapTransaction(tx, userId, item.institution_name)
+        const resolvedCategoryId = resolveCategoryId(
+          mapped.merchant,
+          mapped.category,
+          categoryMap,
+          merchantRules || [],
+        )
+        if (resolvedCategoryId) {
+          mapped.category_id = resolvedCategoryId
+          mapped.needs_review = false
+        }
         const { error } = await supabase
           .from('transactions')
-          .upsert(
-            mapTransaction(tx, userId, item.institution_name),
-            { onConflict: 'plaid_transaction_id' },
-          )
+          .upsert(mapped, { onConflict: 'plaid_transaction_id' })
         if (!error) modified++
       }
 
@@ -133,7 +167,7 @@ function mapTransaction(
     date: tx.date,
     merchant: tx.merchant_name || tx.name,
     category: tx.personal_finance_category?.primary || tx.category?.[0] || null,
-    category_id: null,
+    category_id: null as string | null,
     amount: -tx.amount,
     tags: null,
     notes: null,
@@ -147,4 +181,47 @@ function mapTransaction(
     source_name: sourceName || null,
     needs_review: true,
   }
+}
+
+type MerchantRule = {
+  pattern: string
+  match_type: string
+  category_id: string
+}
+
+/**
+ * Resolve category_id for a transaction using merchant rules (higher priority)
+ * and then falling back to category text matching.
+ */
+function resolveCategoryId(
+  merchant: string | null,
+  categoryText: string | null,
+  categoryMap: Map<string, string>,
+  merchantRules: MerchantRule[],
+): string | null {
+  // 1. Try merchant rules first (already sorted by priority DESC)
+  if (merchant) {
+    const lowerMerchant = merchant.toLowerCase().trim()
+    for (const rule of merchantRules) {
+      const pattern = rule.pattern.toLowerCase()
+      let matched = false
+      if (rule.match_type === 'exact') {
+        matched = lowerMerchant === pattern
+      } else if (rule.match_type === 'starts_with') {
+        matched = lowerMerchant.startsWith(pattern)
+      } else if (rule.match_type === 'contains') {
+        matched = lowerMerchant.includes(pattern)
+      }
+      if (matched) return rule.category_id
+    }
+  }
+
+  // 2. Fall back to category text matching
+  if (categoryText) {
+    const normalized = categoryText.toLowerCase().trim()
+    const id = categoryMap.get(normalized)
+    if (id) return id
+  }
+
+  return null
 }

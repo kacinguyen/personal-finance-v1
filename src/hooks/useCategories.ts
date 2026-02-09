@@ -22,6 +22,7 @@ type UseCategoriesReturn = {
   wantCategories: Category[]
   incomeCategories: Category[]
   transferCategories: Category[]
+  savingsFundedCategories: Category[]
   budgetableIncomeCategories: Category[]
   windfallIncomeCategories: Category[]
   // Refetch
@@ -254,6 +255,11 @@ export function useCategories(): UseCategoriesReturn {
     [categories]
   )
 
+  const savingsFundedCategories = useMemo(
+    () => categories.filter(c => c.category_type === 'savings_funded'),
+    [categories]
+  )
+
   const budgetableIncomeCategories = useMemo(
     () => categories.filter(c => c.category_type === 'income' && c.is_budgetable),
     [categories]
@@ -279,6 +285,7 @@ export function useCategories(): UseCategoriesReturn {
     wantCategories,
     incomeCategories,
     transferCategories,
+    savingsFundedCategories,
     budgetableIncomeCategories,
     windfallIncomeCategories,
     refetch: fetchCategories,
