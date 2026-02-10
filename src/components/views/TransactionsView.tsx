@@ -1,0 +1,830 @@
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { motion } from 'framer-motion'
+import {
+  ArrowLeftRight,
+  CircleDollarSign,
+  ChevronLeft,
+  ChevronRight,
+  LucideIcon,
+} from 'lucide-react'
+import { TransactionItem } from '../common/TransactionItem'
+import type { UICategory } from '../../types/category'
+import { dbCategoryToUI } from '../../lib/categoryUtils'
+import { AddTransactionModal, TransactionFormData } from '../modals/AddTransactionModal'
+import { SplitTransactionModal } from '../modals/SplitTransactionModal'
+import { DuplicateReconciliationModal } from '../modals/DuplicateReconciliationModal'
+import { importCSVFiles } from '../../lib/csvImport'
+import { detectDuplicates, detectTransferPairs } from '../../lib/duplicateDetection'
+import type { AccountTypeMap } from '../../lib/duplicateDetection'
+import type { DuplicatePair } from '../../types/duplicateReconciliation'
+import type { AccountType } from '../../types/account'
+import { supabase } from '../../lib/supabase'
+import { getIcon, DEFAULT_COLOR } from '../../lib/iconMap'
+import { useCategories } from '../../hooks/useCategories'
+import { MonthPicker } from '../common/MonthPicker'
+import { getMonthRange } from '../../lib/dateUtils'
+import { TAB_COLORS } from '../../lib/colors'
+import { SHADOWS } from '../../lib/styles'
+import type { Transaction as DBTransaction } from '../../types/transaction'
+import type { TransactionSplit } from '../../types/transactionSplit'
+import type { UISplit } from '../../types/transactionSplit'
+import { useUser } from '../../hooks/useUser'
+import { TransactionDetailPanel } from '../transactions/TransactionDetailPanel'
+import { TransactionFilterPanel } from '../transactions/TransactionFilterPanel'
+import { TransactionToolbar } from '../transactions/TransactionToolbar'
+
+export type UITransactionSplit = {
+  id: string
+  amount: number
+  category: string | null
+  category_id: string | null
+  notes: string | null
+  color: string
+}
+
+export type UITransaction = {
+  id: string
+  icon: LucideIcon
+  merchant: string
+  category: string
+  category_id: string | null
+  date: string
+  rawDate: string
+  amount: number // Actual amount (positive for income, negative for expense)
+  displayAmount: number // Absolute value for display
+  color: string
+  source: string
+  tags: string | null
+  notes: string | null
+  type: 'income' | 'expense' | 'transfer'
+  needs_review: boolean
+  splits: UITransactionSplit[]
+}
+
+export type FilterType = 'all' | 'income' | 'expense' | 'transfer'
+export type ReviewFilter = 'all' | 'to_review' | 'reviewed'
+
+export type Filters = {
+  type: FilterType
+  reviewStatus: ReviewFilter
+  categoryId: string | null
+  accountSource: string | null
+  searchQuery: string
+}
+
+export function formatDisplayDate(dateStr: string): string {
+  const date = new Date(dateStr + 'T00:00:00')
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+
+  const transactionDate = new Date(date)
+  transactionDate.setHours(0, 0, 0, 0)
+
+  if (transactionDate.getTime() === today.getTime()) {
+    return 'Today'
+  } else if (transactionDate.getTime() === yesterday.getTime()) {
+    return 'Yesterday'
+  } else {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+}
+
+export function TransactionsView() {
+  const ITEMS_PER_PAGE = 25
+
+  const { userId } = useUser()
+  const { categories: dbCategories, findCategoryByName, refetch: refetchCategories, transferCategories } = useCategories()
+  const [transactions, setTransactions] = useState<UITransaction[]>([])
+  const [rawTransactions, setRawTransactions] = useState<DBTransaction[]>([])
+  const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), 1)
+  })
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [editingTransaction, setEditingTransaction] = useState<TransactionFormData | null>(null)
+  const [selectedTransaction, setSelectedTransaction] = useState<UITransaction | null>(null)
+  const [filters, setFilters] = useState<Filters>({
+    type: 'all',
+    reviewStatus: 'all',
+    categoryId: null,
+    accountSource: null,
+    searchQuery: '',
+  })
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
+  const [showSourceDropdown, setShowSourceDropdown] = useState(false)
+  const [showFiltersPanel, setShowFiltersPanel] = useState(false)
+  const [filterDropdownPos, setFilterDropdownPos] = useState<{ top: number; left: number } | null>(null)
+  const filterButtonRef = useRef<HTMLButtonElement>(null)
+  const [searchExpanded, setSearchExpanded] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false)
+  const [showAddDropdown, setShowAddDropdown] = useState(false)
+  const [isReconcileModalOpen, setIsReconcileModalOpen] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [accountTypeMap, setAccountTypeMap] = useState<AccountTypeMap>(new Map())
+
+  // Convert DB categories to UI categories with resolved icons (all categories for filtering)
+  const allUiCategories = useMemo<UICategory[]>(() => {
+    return dbCategories.map(dbCategoryToUI)
+  }, [dbCategories])
+
+  // Categories for expenses only (need/want/savings_funded) for adding transactions
+  const expenseCategories = useMemo<UICategory[]>(() => {
+    return dbCategories
+      .filter(c => c.category_type === 'need' || c.category_type === 'want' || c.category_type === 'savings_funded')
+      .map(dbCategoryToUI)
+  }, [dbCategories])
+
+  // Income categories for the modal
+  const incomeUiCategories = useMemo<UICategory[]>(() => {
+    return dbCategories
+      .filter(c => c.category_type === 'income')
+      .map(dbCategoryToUI)
+  }, [dbCategories])
+
+  // Transfer categories for the modal
+  const transferUiCategories = useMemo<UICategory[]>(() => {
+    return dbCategories
+      .filter(c => c.category_type === 'transfer')
+      .map(dbCategoryToUI)
+  }, [dbCategories])
+
+  // Get unique account sources from transactions
+  const accountSources = useMemo(() => {
+    const sources = new Set<string>()
+    transactions.forEach(tx => {
+      if (tx.source) sources.add(tx.source)
+    })
+    return Array.from(sources).sort()
+  }, [transactions])
+
+  // Map database transaction to UI transaction format
+  const mapDBToUI = useCallback((tx: DBTransaction, splits: TransactionSplit[] = []): UITransaction => {
+    let category = tx.category_id
+      ? dbCategories.find(c => c.id === tx.category_id)
+      : findCategoryByName(tx.category || '')
+
+    const icon = category ? getIcon(category.icon) : CircleDollarSign
+    const color = category?.color || DEFAULT_COLOR
+
+    // Determine transaction type — check transfer category first since
+    // transfers can have positive or negative amounts
+    let type: 'income' | 'expense' | 'transfer' = 'expense'
+    if (category?.category_type === 'transfer' || transferCategories.some(tc => tc.id === tx.category_id)) {
+      type = 'transfer'
+    } else if (tx.amount > 0) {
+      type = 'income'
+    }
+
+    // Map splits to UI format
+    const uiSplits: UITransactionSplit[] = splits.map(split => {
+      const splitCategory = split.category_id
+        ? dbCategories.find(c => c.id === split.category_id)
+        : null
+      return {
+        id: split.id,
+        amount: split.amount,
+        category: splitCategory?.name || split.category || null,
+        category_id: split.category_id,
+        notes: split.notes,
+        color: splitCategory?.color || DEFAULT_COLOR,
+      }
+    })
+
+    return {
+      id: tx.id,
+      icon,
+      merchant: tx.merchant,
+      category: tx.category || 'Uncategorized',
+      category_id: tx.category_id || category?.id || null,
+      date: formatDisplayDate(tx.date),
+      rawDate: tx.date,
+      amount: tx.amount,
+      displayAmount: Math.abs(tx.amount),
+      color,
+      source: tx.source_name || tx.source,
+      tags: tx.tags || null,
+      notes: tx.notes || null,
+      type,
+      needs_review: tx.needs_review ?? false,
+      splits: uiSplits,
+    }
+  }, [dbCategories, findCategoryByName, transferCategories])
+
+  // Fetch transactions from Supabase for selected month
+  const fetchTransactions = useCallback(async () => {
+    setLoading(true)
+    const { startOfMonth, endOfMonth } = getMonthRange(selectedMonth)
+
+    // Fetch transactions
+    const { data: txData, error: txError } = await supabase
+      .from('transactions')
+      .select('*')
+      .gte('date', startOfMonth)
+      .lte('date', endOfMonth)
+      .order('date', { ascending: false })
+
+    if (txError) {
+      console.error('Error fetching transactions:', txError)
+      setLoading(false)
+      return
+    }
+
+    if (!txData) {
+      setTransactions([])
+      setRawTransactions([])
+      setLoading(false)
+      return
+    }
+
+    setRawTransactions(txData as DBTransaction[])
+
+    // Fetch all splits for these transactions
+    const txIds = txData.map(tx => tx.id)
+    const { data: splitsData } = await supabase
+      .from('transaction_splits')
+      .select('*')
+      .in('transaction_id', txIds)
+
+    // Group splits by transaction_id
+    const splitsByTxId = new Map<string, TransactionSplit[]>()
+    if (splitsData) {
+      for (const split of splitsData as TransactionSplit[]) {
+        const existing = splitsByTxId.get(split.transaction_id) || []
+        existing.push(split)
+        splitsByTxId.set(split.transaction_id, existing)
+      }
+    }
+
+    // Map transactions with their splits
+    const uiTransactions = (txData as DBTransaction[]).map(tx =>
+      mapDBToUI(tx, splitsByTxId.get(tx.id) || [])
+    )
+    setTransactions(uiTransactions)
+    setLoading(false)
+  }, [mapDBToUI, selectedMonth])
+
+  // Refetch categories on mount
+  useEffect(() => {
+    refetchCategories()
+  }, [refetchCategories])
+
+  // Fetch accounts to build plaid_account_id → account_type map
+  useEffect(() => {
+    async function fetchAccountTypes() {
+      const { data } = await supabase
+        .from('accounts')
+        .select('plaid_account_id, account_type')
+        .not('plaid_account_id', 'is', null)
+      if (data) {
+        const map: AccountTypeMap = new Map()
+        for (const row of data) {
+          if (row.plaid_account_id) {
+            map.set(row.plaid_account_id, row.account_type as AccountType)
+          }
+        }
+        setAccountTypeMap(map)
+      }
+    }
+    fetchAccountTypes()
+  }, [])
+
+  // Load transactions when selected month or categories change
+  useEffect(() => {
+    if (dbCategories.length > 0) {
+      fetchTransactions()
+    }
+  }, [fetchTransactions, dbCategories.length, selectedMonth])
+
+  // Filtered transactions
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      // Type filter
+      if (filters.type === 'income' && tx.type !== 'income') return false
+      if (filters.type === 'expense' && tx.type !== 'expense') return false
+      if (filters.type === 'transfer' && tx.type !== 'transfer') return false
+
+      // Review status filter
+      if (filters.reviewStatus === 'to_review' && !tx.needs_review) return false
+      if (filters.reviewStatus === 'reviewed' && tx.needs_review) return false
+
+      // Category filter
+      if (filters.categoryId && tx.category_id !== filters.categoryId) return false
+
+      // Source filter
+      if (filters.accountSource && tx.source !== filters.accountSource) return false
+
+      // Search filter
+      if (filters.searchQuery) {
+        const query = filters.searchQuery.toLowerCase()
+        const matchesMerchant = tx.merchant.toLowerCase().includes(query)
+        const matchesCategory = tx.category.toLowerCase().includes(query)
+        const matchesNotes = tx.notes?.toLowerCase().includes(query)
+        if (!matchesMerchant && !matchesCategory && !matchesNotes) return false
+      }
+
+      return true
+    })
+  }, [transactions, filters])
+
+  // To Review count
+  const toReviewCount = useMemo(() => {
+    return transactions.filter(tx => tx.needs_review).length
+  }, [transactions])
+
+  // Pagination
+  const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE)
+  const paginatedTransactions = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+    return filteredTransactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  }, [filteredTransactions, currentPage])
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filters, transactions.length])
+
+  const handleCsvImport = async (files: File[]) => {
+    if (!userId) {
+      console.error('User not authenticated')
+      return
+    }
+    const count = await importCSVFiles(files, userId)
+    console.log(`Imported ${count} transactions`)
+    await fetchTransactions()
+  }
+
+  const handleSaveTransaction = async (transaction: TransactionFormData) => {
+    if (!userId) {
+      throw new Error('User not authenticated')
+    }
+
+    // Income is positive, expense/transfer are negative
+    const finalAmount = transaction.type === 'income'
+      ? transaction.amount
+      : -transaction.amount
+
+    if (transaction.id) {
+      const { error } = await supabase
+        .from('transactions')
+        .update({
+          merchant: transaction.merchant,
+          amount: finalAmount,
+          date: transaction.date,
+          category: transaction.category?.name || null,
+          category_id: transaction.category?.id || null,
+          tags: transaction.tags,
+          notes: transaction.notes,
+        })
+        .eq('id', transaction.id)
+
+      if (error) {
+        console.error('Error updating transaction:', error)
+        throw new Error('Failed to update transaction')
+      }
+    } else {
+      const { error } = await supabase.from('transactions').insert({
+        user_id: userId,
+        merchant: transaction.merchant,
+        amount: finalAmount,
+        date: transaction.date,
+        category: transaction.category?.name || null,
+        category_id: transaction.category?.id || null,
+        source: 'manual',
+        source_name: 'Manual Entry',
+        pending: false,
+        tags: transaction.tags,
+        notes: transaction.notes,
+        plaid_transaction_id: null,
+        plaid_account_id: null,
+        plaid_category: null,
+        plaid_category_id: null,
+        payment_channel: null,
+        needs_review: false,
+      })
+
+      if (error) {
+        console.error('Error adding transaction:', error)
+        throw new Error('Failed to save transaction')
+      }
+    }
+
+    await fetchTransactions()
+  }
+
+  const handleDeleteTransaction = async (transactionId: string) => {
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', transactionId)
+
+    if (error) {
+      console.error('Error deleting transaction:', error)
+      throw new Error('Failed to delete transaction')
+    }
+
+    await fetchTransactions()
+  }
+
+  const handleTransactionClick = (transaction: UITransaction) => {
+    setSelectedTransaction(transaction)
+  }
+
+  const handleEditSelectedTransaction = () => {
+    if (!selectedTransaction) return
+
+    // Find category in the appropriate list based on type
+    let category: UICategory | null = null
+    if (selectedTransaction.category_id) {
+      if (selectedTransaction.type === 'income') {
+        category = incomeUiCategories.find(c => c.id === selectedTransaction.category_id) || null
+      } else if (selectedTransaction.type === 'transfer') {
+        category = transferUiCategories.find(c => c.id === selectedTransaction.category_id) || null
+      } else {
+        category = expenseCategories.find(c => c.id === selectedTransaction.category_id) || null
+      }
+    }
+
+    setEditingTransaction({
+      id: selectedTransaction.id,
+      merchant: selectedTransaction.merchant,
+      amount: selectedTransaction.displayAmount,
+      date: selectedTransaction.rawDate,
+      category,
+      tags: selectedTransaction.tags,
+      notes: selectedTransaction.notes,
+      type: selectedTransaction.type,
+    })
+    setIsAddModalOpen(true)
+  }
+
+  const handleDeleteSelectedTransaction = async () => {
+    if (!selectedTransaction) return
+    await handleDeleteTransaction(selectedTransaction.id)
+    setSelectedTransaction(null)
+  }
+
+  const handleMarkAsReviewed = async (transactionId: string) => {
+    const { error } = await supabase
+      .from('transactions')
+      .update({ needs_review: false })
+      .eq('id', transactionId)
+
+    if (error) {
+      console.error('Error marking transaction as reviewed:', error)
+      return
+    }
+
+    // Update local state to avoid full refetch
+    setTransactions(prev =>
+      prev.map(tx =>
+        tx.id === transactionId ? { ...tx, needs_review: false } : tx
+      )
+    )
+    setRawTransactions(prev =>
+      prev.map(tx =>
+        tx.id === transactionId ? { ...tx, needs_review: false } : tx
+      )
+    )
+  }
+
+  const handleSaveSplits = async (splits: UISplit[]) => {
+    if (!selectedTransaction) return
+
+    // Delete existing splits first
+    const { error: deleteError } = await supabase
+      .from('transaction_splits')
+      .delete()
+      .eq('transaction_id', selectedTransaction.id)
+
+    if (deleteError) {
+      console.error('Error deleting existing splits:', deleteError)
+      throw new Error('Failed to update splits')
+    }
+
+    // If no splits provided, we're removing all splits
+    if (splits.length === 0) {
+      await fetchTransactions()
+      return
+    }
+
+    // Insert new splits
+    const splitsToInsert = splits.map(split => ({
+      transaction_id: selectedTransaction.id,
+      amount: split.amount,
+      category: split.category_name,
+      category_id: split.category_id,
+      notes: split.notes,
+    }))
+
+    const { error: insertError } = await supabase
+      .from('transaction_splits')
+      .insert(splitsToInsert)
+
+    if (insertError) {
+      console.error('Error inserting splits:', insertError)
+      throw new Error('Failed to save splits')
+    }
+
+    await fetchTransactions()
+  }
+
+  const toggleFiltersPanel = useCallback(() => {
+    if (!showFiltersPanel && filterButtonRef.current) {
+      const rect = filterButtonRef.current.getBoundingClientRect()
+      setFilterDropdownPos({ top: rect.bottom + 8, left: rect.left })
+    }
+    setShowFiltersPanel(prev => !prev)
+    setShowAddDropdown(false)
+  }, [showFiltersPanel])
+
+  const handleAddNewTransaction = () => {
+    setEditingTransaction(null)
+    setIsAddModalOpen(true)
+  }
+
+  const handleModalClose = () => {
+    setIsAddModalOpen(false)
+    setEditingTransaction(null)
+  }
+
+  // Update selected transaction when transactions list changes (e.g. after edit)
+  useEffect(() => {
+    if (selectedTransaction) {
+      const updated = transactions.find(t => t.id === selectedTransaction.id)
+      if (updated) {
+        setSelectedTransaction(updated)
+      } else {
+        setSelectedTransaction(null)
+      }
+    }
+  }, [transactions, selectedTransaction?.id])
+
+  const filterTypes: { id: FilterType; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'income', label: 'Income' },
+    { id: 'expense', label: 'Expense' },
+    { id: 'transfer', label: 'Transfer' },
+  ]
+
+  const reviewStatuses: { id: ReviewFilter; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'to_review', label: 'To Review' },
+    { id: 'reviewed', label: 'Reviewed' },
+  ]
+
+  const selectedCategory = filters.categoryId
+    ? allUiCategories.find(c => c.id === filters.categoryId)
+    : null
+
+  // Find "Credit Card Payment" category for transfer reconciliation
+  const ccPaymentCategory = useMemo(() => {
+    return transferCategories.find(c => c.name === 'Credit Card Payment') || null
+  }, [transferCategories])
+
+  // Duplicate + transfer detection map for detail panel
+  const duplicateMap = useMemo(() => {
+    const dupPairs = detectDuplicates(rawTransactions)
+    const transferPairs = accountTypeMap.size > 0
+      ? detectTransferPairs(rawTransactions, accountTypeMap)
+      : []
+    const allPairs = [...dupPairs, ...transferPairs]
+    const map = new Map<string, DuplicatePair[]>()
+    for (const pair of allPairs) {
+      const aId = pair.transactionA.id
+      const bId = pair.transactionB.id
+      map.set(aId, [...(map.get(aId) || []), pair])
+      map.set(bId, [...(map.get(bId) || []), pair])
+    }
+    return map
+  }, [rawTransactions, accountTypeMap])
+
+  const activeFilterCount = [
+    filters.type !== 'all',
+    filters.reviewStatus !== 'all',
+    filters.categoryId !== null,
+    filters.accountSource !== null,
+  ].filter(Boolean).length
+
+  return (
+    <div className="min-h-screen w-full bg-[#FFFBF5] py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="mb-8"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <motion.div
+                animate={{ rotate: [0, 15, -15, 0] }}
+                transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+              >
+                <ArrowLeftRight className="w-8 h-8" style={{ color: TAB_COLORS.transactions }} />
+              </motion.div>
+              <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Transactions</h1>
+            </div>
+            <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
+          </div>
+          <p className="text-[#1F1410]/60 text-lg">Manage all your financial transactions</p>
+        </motion.div>
+
+        {/* Two Column Layout: Transactions List + Details Panel */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3, duration: 0.4 }}
+          className="grid grid-cols-1 lg:grid-cols-[1fr,380px] gap-6"
+        >
+          {/* Left Column: Search/Filters + Transactions List */}
+          <div
+            className="bg-white rounded-2xl overflow-hidden"
+            style={{ boxShadow: SHADOWS.card }}
+          >
+            {/* Compact Toolbar */}
+            <TransactionToolbar
+              searchExpanded={searchExpanded}
+              setSearchExpanded={setSearchExpanded}
+              searchInputRef={searchInputRef}
+              filters={filters}
+              setFilters={setFilters}
+              showFiltersPanel={showFiltersPanel}
+              toggleFiltersPanel={toggleFiltersPanel}
+              filterButtonRef={filterButtonRef}
+              activeFilterCount={activeFilterCount}
+              showAddDropdown={showAddDropdown}
+              setShowAddDropdown={(v) => {
+                setShowAddDropdown(v)
+                if (v) setShowFiltersPanel(false)
+              }}
+              onAddNew={handleAddNewTransaction}
+              onCsvImport={handleCsvImport}
+              fileInputRef={fileInputRef}
+              toReviewCount={toReviewCount}
+              selectedCategory={selectedCategory ?? null}
+              allFilterTypes={filterTypes}
+              reviewStatuses={reviewStatuses}
+            />
+
+            {/* Transactions List */}
+            {loading ? (
+              <div className="p-8 text-center">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                  className="w-8 h-8 border-2 border-[#8B5CF6] border-t-transparent rounded-full mx-auto mb-3"
+                />
+                <p className="text-[#1F1410]/50">Loading transactions...</p>
+              </div>
+            ) : filteredTransactions.length === 0 ? (
+              <div className="p-8 text-center">
+                <CircleDollarSign className="w-12 h-12 text-[#1F1410]/20 mx-auto mb-3" />
+                <p className="text-[#1F1410]/50 mb-2">
+                  {transactions.length === 0 ? 'No transactions yet' : 'No transactions match your filters'}
+                </p>
+                <p className="text-sm text-[#1F1410]/40">
+                  {transactions.length === 0
+                    ? 'Add a transaction or import a CSV to get started'
+                    : 'Try adjusting your filters'}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="divide-y divide-[#1F1410]/5">
+                  {paginatedTransactions.map((transaction, index) => (
+                    <TransactionItem
+                      key={transaction.id}
+                      id={transaction.id}
+                      icon={transaction.icon}
+                      merchant={transaction.merchant}
+                      category={transaction.category}
+                      date={transaction.date}
+                      amount={transaction.displayAmount}
+                      color={transaction.color}
+                      source={transaction.source}
+                      type={transaction.type}
+                      needsReview={transaction.needs_review}
+                      index={index}
+                      isSelected={selectedTransaction?.id === transaction.id}
+                      onClick={() => handleTransactionClick(transaction)}
+                    />
+                  ))}
+                </div>
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between px-6 py-4 border-t border-[#1F1410]/5">
+                    <p className="text-sm text-[#1F1410]/50">
+                      Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}-
+                      {Math.min(currentPage * ITEMS_PER_PAGE, filteredTransactions.length)} of{' '}
+                      {filteredTransactions.length}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#1F1410]/5"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                        Previous
+                      </button>
+                      <span className="text-sm text-[#1F1410]/60 px-2">
+                        Page {currentPage} of {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#1F1410]/5"
+                      >
+                        Next
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Right Column: Transaction Details Panel */}
+          <TransactionDetailPanel
+            selectedTransaction={selectedTransaction}
+            duplicateMap={duplicateMap}
+            onEdit={handleEditSelectedTransaction}
+            onDelete={handleDeleteSelectedTransaction}
+            onMarkAsReviewed={handleMarkAsReviewed}
+            onSplit={() => setIsSplitModalOpen(true)}
+            onReconcile={() => setIsReconcileModalOpen(true)}
+          />
+        </motion.div>
+      </div>
+
+      {/* Add/Edit Transaction Modal */}
+      <AddTransactionModal
+        isOpen={isAddModalOpen}
+        onClose={handleModalClose}
+        onSave={handleSaveTransaction}
+        onDelete={handleDeleteTransaction}
+        categories={expenseCategories}
+        incomeCategories={incomeUiCategories}
+        transferCategories={transferUiCategories}
+        defaultDate={new Date().toISOString().split('T')[0]}
+        editTransaction={editingTransaction}
+      />
+
+      {/* Split Transaction Modal */}
+      {selectedTransaction && (
+        <SplitTransactionModal
+          isOpen={isSplitModalOpen}
+          onClose={() => setIsSplitModalOpen(false)}
+          onSave={handleSaveSplits}
+          transactionAmount={selectedTransaction.amount}
+          transactionMerchant={selectedTransaction.merchant}
+          categories={allUiCategories}
+          existingSplits={selectedTransaction.splits.map(s => ({
+            id: s.id,
+            amount: Math.abs(s.amount),
+            category_id: s.category_id,
+            category_name: s.category,
+            notes: s.notes,
+          }))}
+        />
+      )}
+
+      {/* Duplicate Reconciliation Modal */}
+      <DuplicateReconciliationModal
+        isOpen={isReconcileModalOpen}
+        onClose={() => setIsReconcileModalOpen(false)}
+        transactions={rawTransactions}
+        onComplete={fetchTransactions}
+        accountTypeMap={accountTypeMap}
+        transferCategoryId={ccPaymentCategory?.id}
+        transferCategoryName={ccPaymentCategory?.name}
+      />
+
+      {/* Fixed-position Filter Dropdown (rendered outside overflow-hidden container) */}
+      {showFiltersPanel && filterDropdownPos && (
+        <TransactionFilterPanel
+          filters={filters}
+          setFilters={setFilters}
+          filterDropdownPos={filterDropdownPos}
+          showCategoryDropdown={showCategoryDropdown}
+          setShowCategoryDropdown={setShowCategoryDropdown}
+          showSourceDropdown={showSourceDropdown}
+          setShowSourceDropdown={setShowSourceDropdown}
+          onClose={() => setShowFiltersPanel(false)}
+          allUiCategories={allUiCategories}
+          accountSources={accountSources}
+          toReviewCount={toReviewCount}
+        />
+      )}
+    </div>
+  )
+}

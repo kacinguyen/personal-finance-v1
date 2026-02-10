@@ -1,9 +1,24 @@
+import type { LucideIcon } from 'lucide-react'
+
 /**
  * Category type definitions
  * Maps to the Supabase categories table schema
  */
 
 export type CategoryType = 'need' | 'want' | 'income' | 'transfer' | 'savings_funded'
+
+/**
+ * UI Category type used by components
+ * Has resolved icon component instead of icon name string
+ */
+export type UICategory = {
+  id: string
+  icon: LucideIcon
+  name: string
+  color: string
+  category_type?: string
+  parent_id?: string | null
+}
 
 export type Category = {
   id: string
