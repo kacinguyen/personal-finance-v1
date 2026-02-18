@@ -44,7 +44,6 @@ export function ProfileView() {
             </motion.div>
             <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Profile</h1>
           </div>
-          <p className="text-[#1F1410]/60 text-lg">Manage your account settings and preferences</p>
         </motion.div>
 
         {/* Profile Card */}

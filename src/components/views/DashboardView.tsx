@@ -259,7 +259,6 @@ export function DashboardView() {
             </div>
             <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </div>
-          <p className="text-[#1F1410]/60 text-lg">Your financial overview</p>
         </motion.div>
 
         {/* Key Metrics Grid */}

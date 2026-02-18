@@ -8,7 +8,7 @@ import {
   X,
 } from 'lucide-react'
 import { TAB_COLORS } from '../../lib/colors'
-import type { Filters, FilterType, ReviewFilter } from '../views/TransactionsView'
+import type { Filters, FilterType } from '../views/TransactionsView'
 import type { UICategory } from '../../types/category'
 
 type TransactionToolbarProps = {
@@ -26,10 +26,8 @@ type TransactionToolbarProps = {
   onAddNew: () => void
   onCsvImport: (files: File[]) => void
   fileInputRef: React.RefObject<HTMLInputElement>
-  toReviewCount: number
   selectedCategory: UICategory | null
   allFilterTypes: { id: FilterType; label: string }[]
-  reviewStatuses: { id: ReviewFilter; label: string }[]
 }
 
 export function TransactionToolbar({
@@ -47,10 +45,8 @@ export function TransactionToolbar({
   onAddNew,
   onCsvImport,
   fileInputRef,
-  toReviewCount,
   selectedCategory,
   allFilterTypes,
-  reviewStatuses,
 }: TransactionToolbarProps) {
   return (
     <div className="p-3 border-b border-[#1F1410]/5">
@@ -198,15 +194,6 @@ export function TransactionToolbar({
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#8B5CF6]/10 text-xs text-[#8B5CF6]">
               {allFilterTypes.find(t => t.id === filters.type)?.label}
               <button onClick={() => setFilters(f => ({ ...f, type: 'all' }))} className="text-[#8B5CF6]/50 hover:text-[#8B5CF6]">
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-          {filters.reviewStatus !== 'all' && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#3B82F6]/10 text-xs text-[#3B82F6]">
-              {reviewStatuses.find(s => s.id === filters.reviewStatus)?.label}
-              {filters.reviewStatus === 'to_review' && toReviewCount > 0 && ` (${toReviewCount})`}
-              <button onClick={() => setFilters(f => ({ ...f, reviewStatus: 'all' }))} className="text-[#3B82F6]/50 hover:text-[#3B82F6]">
                 <X className="w-3 h-3" />
               </button>
             </span>

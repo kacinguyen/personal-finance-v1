@@ -417,7 +417,6 @@ export function IncomeView() {
             </div>
             <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </div>
-          <p className="text-[#1F1410]/60 text-lg">Track your earnings and revenue streams</p>
         </motion.div>
 
         {/* Two Column Layout */}

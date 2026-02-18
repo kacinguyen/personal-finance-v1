@@ -287,7 +287,6 @@ export function SavingsView() {
               <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Savings</h1>
             </div>
           </div>
-          <p className="text-[#1F1410]/60 text-lg">Track your progress and create new savings goals</p>
         </motion.div>
 
         {/* Active Goals */}

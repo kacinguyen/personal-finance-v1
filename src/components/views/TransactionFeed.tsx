@@ -355,9 +355,7 @@ export function TransactionFeed() {
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
-              <motion.div animate={{ rotate: [0, 15, -15, 0] }} transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}>
-                <Sparkles className="w-8 h-8 text-[#F59E0B]" />
-              </motion.div>
+              <Sparkles className="w-8 h-8 text-[#F59E0B]" />
               <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Your Spending</h1>
             </div>
             <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />

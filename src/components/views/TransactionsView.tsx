@@ -21,6 +21,8 @@ import type { AccountType } from '../../types/account'
 import { supabase } from '../../lib/supabase'
 import { getIcon, DEFAULT_COLOR } from '../../lib/iconMap'
 import { useCategories } from '../../hooks/useCategories'
+import { useMerchantRules } from '../../hooks/useMerchantRules'
+import type { MatchType } from '../../hooks/useMerchantRules'
 import { MonthPicker } from '../common/MonthPicker'
 import { getMonthRange } from '../../lib/dateUtils'
 import { TAB_COLORS } from '../../lib/colors'
@@ -97,6 +99,7 @@ export function TransactionsView() {
 
   const { userId } = useUser()
   const { categories: dbCategories, findCategoryByName, refetch: refetchCategories, transferCategories } = useCategories()
+  const { createRule, findRuleForMerchant } = useMerchantRules()
   const [transactions, setTransactions] = useState<UITransaction[]>([])
   const [rawTransactions, setRawTransactions] = useState<DBTransaction[]>([])
   const [loading, setLoading] = useState(true)
@@ -337,6 +340,18 @@ export function TransactionsView() {
     return transactions.filter(tx => tx.needs_review).length
   }, [transactions])
 
+  // Reviewed count
+  const reviewedCount = useMemo(() => {
+    return transactions.filter(tx => !tx.needs_review).length
+  }, [transactions])
+
+  // Review tab definitions
+  const reviewTabs: { id: ReviewFilter; label: string; count?: number }[] = [
+    { id: 'all', label: 'All', count: transactions.length },
+    { id: 'to_review', label: 'Needs Review', count: toReviewCount },
+    { id: 'reviewed', label: 'Reviewed', count: reviewedCount },
+  ]
+
   // Pagination
   const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE)
   const paginatedTransactions = useMemo(() => {
@@ -469,6 +484,66 @@ export function TransactionsView() {
     setSelectedTransaction(null)
   }
 
+  const handleFieldSave = async (transactionId: string, updates: Partial<{
+    merchant: string
+    amount: number
+    date: string
+    category: string | null
+    category_id: string | null
+    tags: string | null
+    notes: string | null
+  }>) => {
+    // Build DB update payload
+    const dbUpdates: Record<string, unknown> = {}
+    if (updates.merchant !== undefined) dbUpdates.merchant = updates.merchant
+    if (updates.amount !== undefined) dbUpdates.amount = updates.amount
+    if (updates.date !== undefined) dbUpdates.date = updates.date
+    if (updates.category !== undefined) dbUpdates.category = updates.category
+    if (updates.category_id !== undefined) dbUpdates.category_id = updates.category_id
+    if (updates.tags !== undefined) dbUpdates.tags = updates.tags
+    if (updates.notes !== undefined) dbUpdates.notes = updates.notes
+
+    // Optimistically update rawTransactions
+    const prevRaw = rawTransactions
+    setRawTransactions(prev =>
+      prev.map(tx => tx.id === transactionId ? { ...tx, ...dbUpdates } as DBTransaction : tx)
+    )
+
+    // Optimistically re-map the updated transaction
+    const updatedRaw = rawTransactions.find(tx => tx.id === transactionId)
+    if (updatedRaw) {
+      const mergedRaw = { ...updatedRaw, ...dbUpdates } as DBTransaction
+      // Find existing splits for this transaction
+      const existingSplits = transactions.find(t => t.id === transactionId)?.splits || []
+      const splitData: TransactionSplit[] = existingSplits.map(s => ({
+        id: s.id,
+        transaction_id: transactionId,
+        amount: s.amount,
+        category: s.category,
+        category_id: s.category_id,
+        notes: s.notes,
+        created_at: '',
+        updated_at: '',
+      }))
+      const updatedUI = mapDBToUI(mergedRaw, splitData)
+      setTransactions(prev =>
+        prev.map(tx => tx.id === transactionId ? updatedUI : tx)
+      )
+    }
+
+    const { error } = await supabase
+      .from('transactions')
+      .update(dbUpdates)
+      .eq('id', transactionId)
+
+    if (error) {
+      console.error('Error updating transaction field:', error)
+      // Revert on error
+      setRawTransactions(prevRaw)
+      await fetchTransactions()
+    }
+  }
+
   const handleMarkAsReviewed = async (transactionId: string) => {
     const { error } = await supabase
       .from('transactions')
@@ -492,6 +567,34 @@ export function TransactionsView() {
       )
     )
   }
+
+  const handleCreateMerchantRule = useCallback(async (
+    pattern: string,
+    matchType: MatchType,
+    categoryId: string,
+  ): Promise<boolean> => {
+    const rule = await createRule(pattern, matchType, categoryId)
+    if (!rule) return false
+
+    // Batch-update existing uncategorized transactions matching this pattern
+    const likePattern = matchType === 'exact'
+      ? pattern
+      : matchType === 'starts_with'
+      ? `${pattern}%`
+      : `%${pattern}%`
+
+    await supabase
+      .from('transactions')
+      .update({ category_id: categoryId })
+      .is('category_id', null)
+      .ilike('merchant', likePattern)
+
+    return true
+  }, [createRule])
+
+  const hasRuleForMerchant = useCallback((merchant: string): boolean => {
+    return !!findRuleForMerchant(merchant)
+  }, [findRuleForMerchant])
 
   const handleSaveSplits = async (splits: UISplit[]) => {
     if (!selectedTransaction) return
@@ -572,12 +675,6 @@ export function TransactionsView() {
     { id: 'transfer', label: 'Transfer' },
   ]
 
-  const reviewStatuses: { id: ReviewFilter; label: string }[] = [
-    { id: 'all', label: 'All' },
-    { id: 'to_review', label: 'To Review' },
-    { id: 'reviewed', label: 'Reviewed' },
-  ]
-
   const selectedCategory = filters.categoryId
     ? allUiCategories.find(c => c.id === filters.categoryId)
     : null
@@ -606,7 +703,6 @@ export function TransactionsView() {
 
   const activeFilterCount = [
     filters.type !== 'all',
-    filters.reviewStatus !== 'all',
     filters.categoryId !== null,
     filters.accountSource !== null,
   ].filter(Boolean).length
@@ -623,17 +719,11 @@ export function TransactionsView() {
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
-              <motion.div
-                animate={{ rotate: [0, 15, -15, 0] }}
-                transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
-              >
-                <ArrowLeftRight className="w-8 h-8" style={{ color: TAB_COLORS.transactions }} />
-              </motion.div>
+              <ArrowLeftRight className="w-8 h-8" style={{ color: TAB_COLORS.transactions }} />
               <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Transactions</h1>
             </div>
             <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </div>
-          <p className="text-[#1F1410]/60 text-lg">Manage all your financial transactions</p>
         </motion.div>
 
         {/* Two Column Layout: Transactions List + Details Panel */}
@@ -667,11 +757,48 @@ export function TransactionsView() {
               onAddNew={handleAddNewTransaction}
               onCsvImport={handleCsvImport}
               fileInputRef={fileInputRef}
-              toReviewCount={toReviewCount}
               selectedCategory={selectedCategory ?? null}
               allFilterTypes={filterTypes}
-              reviewStatuses={reviewStatuses}
             />
+
+            {/* Review Status Tabs */}
+            <div className="flex border-b border-[#1F1410]/5">
+              {reviewTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setFilters(f => ({ ...f, reviewStatus: tab.id }))}
+                  className={`relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
+                    filters.reviewStatus === tab.id
+                      ? 'text-[#8B5CF6]'
+                      : 'text-[#1F1410]/50 hover:text-[#1F1410]/80'
+                  }`}
+                >
+                  {tab.label}
+                  {tab.count !== undefined && (
+                    <span
+                      className={`text-[11px] font-semibold px-1.5 py-px rounded-full min-w-[20px] text-center ${
+                        filters.reviewStatus === tab.id
+                          ? tab.id === 'to_review' && tab.count > 0
+                            ? 'bg-[#3B82F6] text-white'
+                            : 'bg-[#8B5CF6]/10 text-[#8B5CF6]'
+                          : tab.id === 'to_review' && tab.count > 0
+                            ? 'bg-[#3B82F6]/10 text-[#3B82F6]'
+                            : 'bg-[#1F1410]/5 text-[#1F1410]/40'
+                      }`}
+                    >
+                      {tab.count}
+                    </span>
+                  )}
+                  {filters.reviewStatus === tab.id && (
+                    <motion.div
+                      layoutId="review-tab-indicator"
+                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#8B5CF6]"
+                      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                    />
+                  )}
+                </button>
+              ))}
+            </div>
 
             {/* Transactions List */}
             {loading ? (
@@ -757,11 +884,17 @@ export function TransactionsView() {
           <TransactionDetailPanel
             selectedTransaction={selectedTransaction}
             duplicateMap={duplicateMap}
+            categories={expenseCategories}
+            incomeCategories={incomeUiCategories}
+            transferCategories={transferUiCategories}
             onEdit={handleEditSelectedTransaction}
             onDelete={handleDeleteSelectedTransaction}
             onMarkAsReviewed={handleMarkAsReviewed}
             onSplit={() => setIsSplitModalOpen(true)}
             onReconcile={() => setIsReconcileModalOpen(true)}
+            onFieldSave={handleFieldSave}
+            onCreateMerchantRule={handleCreateMerchantRule}
+            hasRuleForMerchant={hasRuleForMerchant}
           />
         </motion.div>
       </div>
@@ -822,7 +955,6 @@ export function TransactionsView() {
           onClose={() => setShowFiltersPanel(false)}
           allUiCategories={allUiCategories}
           accountSources={accountSources}
-          toReviewCount={toReviewCount}
         />
       )}
     </div>

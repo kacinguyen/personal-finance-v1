@@ -4,6 +4,7 @@ import {
   Shield,
   Sparkles,
   PiggyBank,
+  Trash2,
 } from 'lucide-react'
 import type { CategoryBudget, CategoryGroup, SavingsGoal } from '../views/BudgetView'
 
@@ -12,11 +13,13 @@ function CategoryRow({
   category,
   index,
   onBudgetChange,
+  onDeleteCategory,
   isChild = false,
 }: {
   category: CategoryBudget
   index: number
   onBudgetChange: (id: string, value: string) => void
+  onDeleteCategory?: (budgetId: string, categoryId: string | null, name: string) => void
   isChild?: boolean
 }) {
   const Icon = category.icon
@@ -28,7 +31,7 @@ function CategoryRow({
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.05, duration: 0.3 }}
-      className={`flex items-center justify-between py-2 ${isChild ? 'pl-6' : ''}`}
+      className={`group flex items-center justify-between py-2 ${isChild ? 'pl-6' : ''}`}
     >
       {/* Left section: Icon + Info */}
       <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -57,17 +60,27 @@ function CategoryRow({
         </div>
       </div>
 
-      {/* Right section: Budget input */}
-      <div className="relative flex-shrink-0">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1F1410]/40 text-sm font-medium">
-          $
-        </span>
-        <input
-          type="text"
-          value={category.budget}
-          onChange={(e) => onBudgetChange(category.id, e.target.value)}
-          className={`pl-6 pr-3 py-1.5 text-right font-semibold text-[#1F1410] bg-[#1F1410]/[0.03] rounded-lg focus:bg-white focus:ring-2 focus:ring-[#6366F1]/20 focus:outline-none transition-all text-sm ${isChild ? 'w-24' : 'w-28'}`}
-        />
+      {/* Right section: Delete button + Budget input */}
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {onDeleteCategory && (
+          <button
+            onClick={() => onDeleteCategory(category.id, category.category_id, category.name)}
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-50"
+          >
+            <Trash2 className="w-4 h-4 text-[#1F1410]/30 hover:text-red-500 transition-colors" />
+          </button>
+        )}
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1F1410]/40 text-sm font-medium">
+            $
+          </span>
+          <input
+            type="text"
+            value={category.budget}
+            onChange={(e) => onBudgetChange(category.id, e.target.value)}
+            className={`pl-6 pr-3 py-1.5 text-right font-semibold text-[#1F1410] bg-[#1F1410]/[0.03] rounded-lg focus:bg-white focus:ring-2 focus:ring-[#6366F1]/20 focus:outline-none transition-all text-sm ${isChild ? 'w-24' : 'w-28'}`}
+          />
+        </div>
       </div>
     </motion.div>
   )
@@ -78,12 +91,14 @@ function CategoryGroupRow({
   group,
   startIndex,
   onBudgetChange,
+  onDeleteCategory,
   expandedGroups,
   onToggleExpand,
 }: {
   group: CategoryGroup
   startIndex: number
   onBudgetChange: (id: string, value: string) => void
+  onDeleteCategory?: (budgetId: string, categoryId: string | null, name: string, childBudgetIds?: string[], childCategoryIds?: string[]) => void
   expandedGroups: Set<string>
   onToggleExpand: (id: string) => void
 }) {
@@ -108,7 +123,7 @@ function CategoryGroupRow({
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: startIndex * 0.05, duration: 0.3 }}
-        className="flex items-center justify-between py-2"
+        className="group/parent flex items-center justify-between py-2"
       >
         {/* Left section: Expand button + Icon + Info */}
         <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -159,25 +174,39 @@ function CategoryGroupRow({
           </div>
         </div>
 
-        {/* Right section: Total budget display or input */}
-        <div className="relative flex-shrink-0">
-          {hasChildren ? (
-            <div className="w-28 px-3 py-1.5 text-right font-semibold text-[#1F1410]/60 text-sm">
-              ${totalBudget.toLocaleString()}
-            </div>
-          ) : (
-            <>
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1F1410]/40 text-sm font-medium">
-                $
-              </span>
-              <input
-                type="text"
-                value={group.parent.budget}
-                onChange={(e) => onBudgetChange(group.parent.id, e.target.value)}
-                className="w-28 pl-6 pr-3 py-1.5 text-right font-semibold text-[#1F1410] bg-[#1F1410]/[0.03] rounded-lg focus:bg-white focus:ring-2 focus:ring-[#6366F1]/20 focus:outline-none transition-all text-sm"
-              />
-            </>
+        {/* Right section: Delete button + Total budget display or input */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {onDeleteCategory && (
+            <button
+              onClick={() => {
+                const childBudgetIds = hasChildren ? group.children.map(c => c.id) : undefined
+                const childCategoryIds = hasChildren ? group.children.map(c => c.category_id).filter((id): id is string => id !== null) : undefined
+                onDeleteCategory(group.parent.id, group.parent.category_id, group.parent.name, childBudgetIds, childCategoryIds)
+              }}
+              className="opacity-0 group-hover/parent:opacity-100 transition-opacity p-1 rounded hover:bg-red-50"
+            >
+              <Trash2 className="w-4 h-4 text-[#1F1410]/30 hover:text-red-500 transition-colors" />
+            </button>
           )}
+          <div className="relative">
+            {hasChildren ? (
+              <div className="w-28 px-3 py-1.5 text-right font-semibold text-[#1F1410]/60 text-sm">
+                ${totalBudget.toLocaleString()}
+              </div>
+            ) : (
+              <>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1F1410]/40 text-sm font-medium">
+                  $
+                </span>
+                <input
+                  type="text"
+                  value={group.parent.budget}
+                  onChange={(e) => onBudgetChange(group.parent.id, e.target.value)}
+                  className="w-28 pl-6 pr-3 py-1.5 text-right font-semibold text-[#1F1410] bg-[#1F1410]/[0.03] rounded-lg focus:bg-white focus:ring-2 focus:ring-[#6366F1]/20 focus:outline-none transition-all text-sm"
+                />
+              </>
+            )}
+          </div>
         </div>
       </motion.div>
 
@@ -198,6 +227,7 @@ function CategoryGroupRow({
                   category={child}
                   index={startIndex + 1 + childIndex}
                   onBudgetChange={onBudgetChange}
+                  onDeleteCategory={onDeleteCategory ? (budgetId, categoryId, name) => onDeleteCategory(budgetId, categoryId, name) : undefined}
                   isChild
                 />
               ))}
@@ -285,6 +315,7 @@ export type BudgetCategorySectionProps = {
   groups: CategoryGroup[]
   categoryCount: number
   onBudgetChange: (id: string, value: string) => void
+  onDeleteCategory?: (budgetId: string, categoryId: string | null, name: string, childBudgetIds?: string[], childCategoryIds?: string[]) => void
   expandedGroups: Set<string>
   onToggleExpand: (id: string) => void
   animationDelay?: number
@@ -310,6 +341,7 @@ export function BudgetCategorySection({
   groups,
   categoryCount,
   onBudgetChange,
+  onDeleteCategory,
   expandedGroups,
   onToggleExpand,
   animationDelay = 0.3,
@@ -344,6 +376,7 @@ export function BudgetCategorySection({
             group={group}
             startIndex={index}
             onBudgetChange={onBudgetChange}
+            onDeleteCategory={onDeleteCategory}
             expandedGroups={expandedGroups}
             onToggleExpand={onToggleExpand}
           />

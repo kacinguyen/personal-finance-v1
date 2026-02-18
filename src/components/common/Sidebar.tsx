@@ -99,7 +99,6 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
       {/* Logo/Header */}
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-[#1F1410]">Pachi</h2>
-        <p className="text-sm text-[#1F1410]/50 mt-1">Track your personal finances</p>
       </div>
 
       {/* Navigation Tabs */}

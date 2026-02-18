@@ -1,5 +1,5 @@
 import { ChevronDown } from 'lucide-react'
-import type { Filters, FilterType, ReviewFilter } from '../views/TransactionsView'
+import type { Filters, FilterType } from '../views/TransactionsView'
 import type { UICategory } from '../../types/category'
 
 type TransactionFilterPanelProps = {
@@ -13,7 +13,6 @@ type TransactionFilterPanelProps = {
   onClose: () => void
   allUiCategories: UICategory[]
   accountSources: string[]
-  toReviewCount: number
 }
 
 const filterTypes: { id: FilterType; label: string }[] = [
@@ -21,12 +20,6 @@ const filterTypes: { id: FilterType; label: string }[] = [
   { id: 'income', label: 'Income' },
   { id: 'expense', label: 'Expense' },
   { id: 'transfer', label: 'Transfer' },
-]
-
-const reviewStatuses: { id: ReviewFilter; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'to_review', label: 'To Review' },
-  { id: 'reviewed', label: 'Reviewed' },
 ]
 
 export function TransactionFilterPanel({
@@ -40,7 +33,6 @@ export function TransactionFilterPanel({
   onClose,
   allUiCategories,
   accountSources,
-  toReviewCount,
 }: TransactionFilterPanelProps) {
   const selectedCategory = filters.categoryId
     ? allUiCategories.find(c => c.id === filters.categoryId) ?? null
@@ -71,31 +63,6 @@ export function TransactionFilterPanel({
                   }`}
                 >
                   {type.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Status */}
-          <div>
-            <label className="block text-[10px] font-semibold text-[#1F1410]/40 uppercase tracking-wider mb-1">Status</label>
-            <div className="flex flex-wrap gap-1">
-              {reviewStatuses.map((status) => (
-                <button
-                  key={status.id}
-                  onClick={() => setFilters(f => ({ ...f, reviewStatus: status.id }))}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                    filters.reviewStatus === status.id
-                      ? 'bg-[#8B5CF6]/10 text-[#8B5CF6]'
-                      : 'text-[#1F1410]/60 hover:bg-[#1F1410]/5 hover:text-[#1F1410]'
-                  }`}
-                >
-                  {status.label}
-                  {status.id === 'to_review' && toReviewCount > 0 && (
-                    <span className="px-1 py-px rounded text-[9px] font-bold bg-[#3B82F6] text-white min-w-[14px] text-center leading-tight">
-                      {toReviewCount}
-                    </span>
-                  )}
                 </button>
               ))}
             </div>

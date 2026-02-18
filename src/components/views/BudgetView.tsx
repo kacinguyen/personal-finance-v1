@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   Target,
   LucideIcon,
   Loader2,
+  Trash2,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useUser } from '../../hooks/useUser'
@@ -193,7 +194,7 @@ const DEFAULT_BUDGET_AMOUNTS: Record<string, number> = {
 
 export function BudgetView() {
   const { userId } = useUser()
-  const { createCategory: createDbCategory, seedDefaultCategories } = useCategories()
+  const { createCategory: createDbCategory, deleteCategory: deleteDbCategory, seedDefaultCategories, needCategories, wantCategories, loading: categoriesLoading } = useCategories()
   const [budgets, setBudgets] = useState<CategoryBudget[]>([])
   const [loading, setLoading] = useState(true)
   const [seeding, setSeeding] = useState(false)
@@ -209,6 +210,15 @@ export function BudgetView() {
 
   // Savings goals state
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([])
+
+  // Delete confirmation state
+  const [deletingInfo, setDeletingInfo] = useState<{
+    budgetId: string
+    categoryId: string | null
+    name: string
+    childBudgetIds?: string[]
+    childCategoryIds?: string[]
+  } | null>(null)
 
   const toggleExpandGroup = useCallback((id: string) => {
     setExpandedGroups(prev => {
@@ -267,6 +277,7 @@ export function BudgetView() {
 
   // Fetch budgets from database with category parent info
   const fetchBudgets = useCallback(async () => {
+    if (categoriesLoading) return
     setLoading(true)
     const { data, error } = await supabase
       .from('budgets')
@@ -290,14 +301,55 @@ export function BudgetView() {
     }
 
     if (data && data.length > 0) {
-      setBudgets(data.map(dbToUI))
+      // Auto-create $0 budgets for need/want categories that don't have one yet
+      const allExpenseCategories = [...needCategories, ...wantCategories]
+      const existingCategoryIds = new Set(data.map(b => b.category_id).filter(Boolean))
+      const missingCategories = allExpenseCategories.filter(c => !existingCategoryIds.has(c.id))
+
+      if (missingCategories.length > 0 && userId) {
+        const inserts = missingCategories.map(cat => ({
+          user_id: userId,
+          category: cat.name,
+          category_id: cat.id,
+          monthly_limit: 0,
+          budget_type: cat.category_type,
+          flexibility: 'variable' as const,
+          icon: cat.icon,
+          color: cat.color,
+          is_active: true,
+        }))
+
+        const { data: newBudgets, error: insertError } = await supabase
+          .from('budgets')
+          .insert(inserts)
+          .select(`
+            *,
+            categories:category_id (
+              id,
+              parent_id,
+              name,
+              icon,
+              color
+            )
+          `)
+
+        if (insertError) {
+          console.error('Error auto-creating budgets:', insertError)
+        }
+
+        const allBudgets = [...data, ...(newBudgets || [])]
+        setBudgets(allBudgets.map(dbToUI))
+      } else {
+        setBudgets(data.map(dbToUI))
+      }
+
       setLoading(false)
     } else {
       // No budgets found - seed defaults
       setLoading(false)
       await seedDefaultData()
     }
-  }, [seedDefaultData])
+  }, [seedDefaultData, categoriesLoading, needCategories, wantCategories, userId])
 
   // Fetch savings goals from database
   const fetchSavingsGoals = useCallback(async () => {
@@ -484,6 +536,56 @@ export function BudgetView() {
     }
   }
 
+  // Show delete confirmation modal
+  const handleDeleteCategoryClick = (
+    budgetId: string,
+    categoryId: string | null,
+    name: string,
+    childBudgetIds?: string[],
+    childCategoryIds?: string[],
+  ) => {
+    setDeletingInfo({ budgetId, categoryId, name, childBudgetIds, childCategoryIds })
+  }
+
+  // Confirm delete: remove budget rows + category from DB, update local state
+  const handleConfirmDelete = async () => {
+    if (!deletingInfo) return
+
+    const { budgetId, categoryId, childBudgetIds, childCategoryIds } = deletingInfo
+
+    // Collect all budget IDs to delete
+    const budgetIdsToDelete = [budgetId, ...(childBudgetIds || [])]
+
+    // Delete budget rows
+    const { error: budgetError } = await supabase
+      .from('budgets')
+      .delete()
+      .in('id', budgetIdsToDelete)
+
+    if (budgetError) {
+      console.error('Error deleting budgets:', budgetError)
+      setDeletingInfo(null)
+      return
+    }
+
+    // Delete child categories first (if parent with children)
+    if (childCategoryIds && childCategoryIds.length > 0) {
+      for (const childCatId of childCategoryIds) {
+        await deleteDbCategory(childCatId)
+      }
+    }
+
+    // Delete the main category
+    if (categoryId) {
+      await deleteDbCategory(categoryId)
+    }
+
+    // Update local state
+    const deletedSet = new Set(budgetIdsToDelete)
+    setBudgets(prev => prev.filter(b => !deletedSet.has(b.id)))
+    setDeletingInfo(null)
+  }
+
   if (loading || seeding) {
     return (
       <div className="min-h-screen w-full bg-[#FFFBF5] py-8 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
@@ -537,9 +639,6 @@ export function BudgetView() {
               Budget Plan
             </h1>
           </div>
-          <p className="text-[#1F1410]/60 text-lg">
-            Allocate your monthly income to categories
-          </p>
         </motion.div>
 
         {/* Month Selector */}
@@ -570,6 +669,7 @@ export function BudgetView() {
             groups={needsGroups}
             categoryCount={needsCategories.length}
             onBudgetChange={handleBudgetChange}
+            onDeleteCategory={handleDeleteCategoryClick}
             expandedGroups={expandedGroups}
             onToggleExpand={toggleExpandGroup}
             animationDelay={0.3}
@@ -581,6 +681,7 @@ export function BudgetView() {
             groups={wantsGroups}
             categoryCount={wantsCategories.length}
             onBudgetChange={handleBudgetChange}
+            onDeleteCategory={handleDeleteCategoryClick}
             expandedGroups={expandedGroups}
             onToggleExpand={toggleExpandGroup}
             animationDelay={0.4}
@@ -594,6 +695,65 @@ export function BudgetView() {
           />
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deletingInfo && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setDeletingInfo(null)}
+              className="fixed inset-0 bg-[#1F1410]/40 backdrop-blur-sm z-50"
+            />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center">
+                    <Trash2 className="w-6 h-6 text-red-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-[#1F1410]">Delete Category</h3>
+                    <p className="text-sm text-[#1F1410]/60">This action cannot be undone</p>
+                  </div>
+                </div>
+                <p className="text-sm text-[#1F1410]/70 mb-6">
+                  Are you sure you want to delete <span className="font-semibold">{deletingInfo.name}</span>
+                  {deletingInfo.childBudgetIds && deletingInfo.childBudgetIds.length > 0
+                    ? ` and its ${deletingInfo.childBudgetIds.length} sub-categories`
+                    : ''}
+                  ? This will remove the category from transaction dropdowns. Existing transactions will keep their category text.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setDeletingInfo(null)}
+                    className="flex-1 px-4 py-3 rounded-xl font-semibold text-[#1F1410]/60 hover:bg-[#1F1410]/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleConfirmDelete}
+                    className="flex-1 px-4 py-3 rounded-xl font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors"
+                  >
+                    Delete
+                  </motion.button>
+                </div>
+              </motion.div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
