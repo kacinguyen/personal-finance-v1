@@ -15,7 +15,8 @@ import { useExpectedIncome } from '../../hooks/useExpectedIncome'
 import type { CategoryType } from '../../types/category'
 import { BudgetSummaryCard } from '../budget/BudgetSummaryCard'
 import { AddCategoryDropdown } from '../budget/AddCategoryDropdown'
-import { BudgetCategorySection, SavingsGoalsSection } from '../budget/BudgetCategorySection'
+import { SavingsGoalsSection } from '../budget/BudgetCategorySection'
+import { BudgetCategoryTable } from '../budget/BudgetCategoryTable'
 
 // Database budget type with joined category data
 type DBBudgetWithCategory = {
@@ -37,6 +38,12 @@ type DBBudgetWithCategory = {
   } | null
 }
 
+// Grouped category structure for nested display (used by BudgetCategorySection)
+export type CategoryGroup = {
+  parent: CategoryBudget
+  children: CategoryBudget[]
+}
+
 // UI budget type
 export type CategoryBudget = {
   id: string
@@ -49,12 +56,6 @@ export type CategoryBudget = {
   lastMonthSpent: number
   color: string
   type: CategoryType
-}
-
-// Grouped category structure for nested display
-export type CategoryGroup = {
-  parent: CategoryBudget
-  children: CategoryBudget[]
 }
 
 // Database savings goal type
@@ -131,43 +132,6 @@ function dbToUI(budget: DBBudgetWithCategory): CategoryBudget {
   }
 }
 
-// Group budgets by parent-child relationship
-function groupByParent(budgets: CategoryBudget[]): CategoryGroup[] {
-  const groups: CategoryGroup[] = []
-  const childMap = new Map<string, CategoryBudget[]>()
-  const standaloneItems: CategoryBudget[] = []
-
-  // Separate parents and children
-  const parents = budgets.filter(b => !b.parent_id)
-  const children = budgets.filter(b => b.parent_id)
-
-  // Map children to their parent category_id
-  children.forEach(child => {
-    if (child.parent_id) {
-      const existing = childMap.get(child.parent_id) || []
-      existing.push(child)
-      childMap.set(child.parent_id, existing)
-    }
-  })
-
-  // Create groups for parents that have children
-  parents.forEach(parent => {
-    const parentChildren = parent.category_id ? childMap.get(parent.category_id) || [] : []
-    if (parentChildren.length > 0) {
-      groups.push({ parent, children: parentChildren })
-    } else {
-      standaloneItems.push(parent)
-    }
-  })
-
-  // Add standalone items as single-item groups
-  standaloneItems.forEach(item => {
-    groups.push({ parent: item, children: [] })
-  })
-
-  return groups
-}
-
 // Default budget amounts for seeded categories
 const DEFAULT_BUDGET_AMOUNTS: Record<string, number> = {
   'Rent': 2000,
@@ -194,7 +158,7 @@ const DEFAULT_BUDGET_AMOUNTS: Record<string, number> = {
 
 export function BudgetView() {
   const { userId } = useUser()
-  const { createCategory: createDbCategory, deleteCategory: deleteDbCategory, seedDefaultCategories, needCategories, wantCategories, loading: categoriesLoading } = useCategories()
+  const { createCategory: createDbCategory, updateCategory: updateDbCategory, deleteCategory: deleteDbCategory, seedDefaultCategories, needCategories, wantCategories, incomeCategories, transferCategories, savingsFundedCategories, loading: categoriesLoading } = useCategories()
   const [budgets, setBudgets] = useState<CategoryBudget[]>([])
   const [loading, setLoading] = useState(true)
   const [seeding, setSeeding] = useState(false)
@@ -204,9 +168,6 @@ export function BudgetView() {
   })
 
   const { expectedIncome } = useExpectedIncome(selectedMonth)
-
-  // Expanded groups state for nested categories
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
   // Savings goals state
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([])
@@ -219,18 +180,6 @@ export function BudgetView() {
     childBudgetIds?: string[]
     childCategoryIds?: string[]
   } | null>(null)
-
-  const toggleExpandGroup = useCallback((id: string) => {
-    setExpandedGroups(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
-    })
-  }, [])
 
   // Seed default categories and budgets for new users
   const seedDefaultData = useCallback(async () => {
@@ -301,8 +250,8 @@ export function BudgetView() {
     }
 
     if (data && data.length > 0) {
-      // Auto-create $0 budgets for need/want categories that don't have one yet
-      const allExpenseCategories = [...needCategories, ...wantCategories]
+      // Auto-create $0 budgets for all categories that don't have one yet
+      const allExpenseCategories = [...needCategories, ...wantCategories, ...incomeCategories, ...transferCategories, ...savingsFundedCategories]
       const existingCategoryIds = new Set(data.map(b => b.category_id).filter(Boolean))
       const missingCategories = allExpenseCategories.filter(c => !existingCategoryIds.has(c.id))
 
@@ -349,7 +298,7 @@ export function BudgetView() {
       setLoading(false)
       await seedDefaultData()
     }
-  }, [seedDefaultData, categoriesLoading, needCategories, wantCategories, userId])
+  }, [seedDefaultData, categoriesLoading, needCategories, wantCategories, incomeCategories, transferCategories, savingsFundedCategories, userId])
 
   // Fetch savings goals from database
   const fetchSavingsGoals = useCallback(async () => {
@@ -375,34 +324,29 @@ export function BudgetView() {
     fetchSavingsGoals()
   }, [fetchBudgets, fetchSavingsGoals, selectedMonth])
 
-  // Separate categories by type and group by parent
-  const needsCategories = useMemo(
-    () => budgets.filter((c) => c.type === 'need'),
-    [budgets],
-  )
-  const wantsCategories = useMemo(
-    () => budgets.filter((c) => c.type === 'want'),
-    [budgets],
-  )
+  // IDs of categories that are parents (have children) — exclude from totals to avoid double-counting
+  const parentCategoryIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const b of budgets) {
+      if (b.parent_id) ids.add(b.parent_id)
+    }
+    return ids
+  }, [budgets])
 
-  // Group categories by parent-child for nested display
-  const needsGroups = useMemo(
-    () => groupByParent(needsCategories),
-    [needsCategories],
-  )
-  const wantsGroups = useMemo(
-    () => groupByParent(wantsCategories),
-    [wantsCategories],
+  // Only sum leaf categories (those that aren't parents of other categories)
+  const leafBudgets = useMemo(
+    () => budgets.filter(b => !b.category_id || !parentCategoryIds.has(b.category_id)),
+    [budgets, parentCategoryIds],
   )
 
   const needsBudget = useMemo(
-    () => needsCategories.reduce((sum, cat) => sum + cat.budget, 0),
-    [needsCategories],
+    () => leafBudgets.filter(c => c.type === 'need').reduce((sum, cat) => sum + cat.budget, 0),
+    [leafBudgets],
   )
 
   const wantsBudget = useMemo(
-    () => wantsCategories.reduce((sum, cat) => sum + cat.budget, 0),
-    [wantsCategories],
+    () => leafBudgets.filter(c => c.type === 'want').reduce((sum, cat) => sum + cat.budget, 0),
+    [leafBudgets],
   )
 
   const savingsBudget = useMemo(
@@ -411,8 +355,8 @@ export function BudgetView() {
   )
 
   const totalBudget = useMemo(
-    () => budgets.reduce((sum, cat) => sum + cat.budget, 0) + savingsBudget,
-    [budgets, savingsBudget],
+    () => leafBudgets.reduce((sum, cat) => sum + cat.budget, 0) + savingsBudget,
+    [leafBudgets, savingsBudget],
   )
 
   // Update budget in database (debounced)
@@ -586,6 +530,43 @@ export function BudgetView() {
     setDeletingInfo(null)
   }
 
+  // Update category name/icon/color/type and sync to budget row
+  const handleUpdateCategory = async (
+    budgetId: string,
+    categoryId: string,
+    updates: { name?: string; icon?: string; color?: string; category_type?: CategoryType },
+  ) => {
+    // 1. Update category in categories table
+    const updated = await updateDbCategory({ id: categoryId, ...updates })
+    if (!updated) return
+
+    // 2. Update the budget row to keep it in sync
+    const budgetUpdates: Record<string, string> = {}
+    if (updates.name) budgetUpdates.category = updates.name
+    if (updates.icon) budgetUpdates.icon = updates.icon
+    if (updates.color) budgetUpdates.color = updates.color
+    if (updates.category_type) budgetUpdates.budget_type = updates.category_type
+
+    if (Object.keys(budgetUpdates).length > 0) {
+      await supabase.from('budgets').update(budgetUpdates).eq('id', budgetId)
+    }
+
+    // 3. Optimistically update local state
+    setBudgets(prev =>
+      prev.map(b =>
+        b.id === budgetId
+          ? {
+              ...b,
+              ...(updates.name ? { name: updates.name } : {}),
+              ...(updates.icon ? { icon: getIcon(updates.icon), iconName: updates.icon } : {}),
+              ...(updates.color ? { color: updates.color } : {}),
+              ...(updates.category_type ? { type: updates.category_type } : {}),
+            }
+          : b,
+      ),
+    )
+  }
+
   if (loading || seeding) {
     return (
       <div className="min-h-screen w-full bg-[#FFFBF5] py-8 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
@@ -663,28 +644,12 @@ export function BudgetView() {
             <AddCategoryDropdown onCreateCategory={handleCreateCategory} />
           </div>
 
-          {/* Needs Section */}
-          <BudgetCategorySection
-            type="needs"
-            groups={needsGroups}
-            categoryCount={needsCategories.length}
+          {/* All Categories Table */}
+          <BudgetCategoryTable
+            budgets={budgets}
             onBudgetChange={handleBudgetChange}
             onDeleteCategory={handleDeleteCategoryClick}
-            expandedGroups={expandedGroups}
-            onToggleExpand={toggleExpandGroup}
-            animationDelay={0.3}
-          />
-
-          {/* Wants Section */}
-          <BudgetCategorySection
-            type="wants"
-            groups={wantsGroups}
-            categoryCount={wantsCategories.length}
-            onBudgetChange={handleBudgetChange}
-            onDeleteCategory={handleDeleteCategoryClick}
-            expandedGroups={expandedGroups}
-            onToggleExpand={toggleExpandGroup}
-            animationDelay={0.4}
+            onEditCategory={handleUpdateCategory}
           />
 
           {/* Savings Section */}
