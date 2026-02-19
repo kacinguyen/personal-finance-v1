@@ -20,7 +20,7 @@ export function App() {
       case 'dashboard':
         return <DashboardView />
       case 'transactions':
-        return <TransactionsView />
+        return <TransactionsView onNavigate={(tab) => setActiveTab(tab as Tab)} />
       case 'income':
         return <IncomeView />
       case 'expenses':

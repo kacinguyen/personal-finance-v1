@@ -94,7 +94,7 @@ export function formatDisplayDate(dateStr: string): string {
   }
 }
 
-export function TransactionsView() {
+export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) => void }) {
   const ITEMS_PER_PAGE = 25
 
   const { userId } = useUser()
@@ -113,7 +113,7 @@ export function TransactionsView() {
   const [selectedTransaction, setSelectedTransaction] = useState<UITransaction | null>(null)
   const [filters, setFilters] = useState<Filters>({
     type: 'all',
-    reviewStatus: 'all',
+    reviewStatus: 'to_review',
     categoryId: null,
     accountSource: null,
     searchQuery: '',
@@ -895,6 +895,7 @@ export function TransactionsView() {
             onFieldSave={handleFieldSave}
             onCreateMerchantRule={handleCreateMerchantRule}
             hasRuleForMerchant={hasRuleForMerchant}
+            onNavigateToRules={() => onNavigate?.('profile')}
           />
         </motion.div>
       </div>

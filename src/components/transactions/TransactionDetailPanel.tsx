@@ -50,6 +50,7 @@ type TransactionDetailPanelProps = {
   onFieldSave: (transactionId: string, updates: FieldSaveUpdates) => Promise<void>
   onCreateMerchantRule?: (pattern: string, matchType: MatchType, categoryId: string) => Promise<boolean>
   hasRuleForMerchant?: (merchant: string) => boolean
+  onNavigateToRules?: () => void
 }
 
 type CategoryTab = 'expense' | 'income' | 'transfer'
@@ -316,6 +317,7 @@ export function TransactionDetailPanel({
   onFieldSave,
   onCreateMerchantRule,
   hasRuleForMerchant,
+  onNavigateToRules,
 }: TransactionDetailPanelProps) {
   const [editingField, setEditingField] = useState<EditingField>(null)
   const [editValue, setEditValue] = useState('')
@@ -982,7 +984,19 @@ export function TransactionDetailPanel({
             </div>
 
             {/* Actions */}
-            <div className="flex items-center justify-end gap-3">
+            <div className="flex items-center gap-3">
+              {onNavigateToRules && (
+                <button
+                  onClick={() => {
+                    setShowRuleModal(false)
+                    onNavigateToRules()
+                  }}
+                  className="text-sm font-medium text-[#14B8A6] hover:text-[#0D9488] transition-colors"
+                >
+                  Manage all rules →
+                </button>
+              )}
+              <div className="flex-1" />
               <button
                 onClick={() => setShowRuleModal(false)}
                 className="px-4 py-2 text-sm font-medium text-[#1F1410]/50 hover:text-[#1F1410]/80 transition-colors"

@@ -4,12 +4,13 @@ import {
   LayoutDashboard,
   Calendar,
   Wallet,
-  TrendingDown,
-  TrendingUp,
   ArrowUpRight,
   ArrowDownRight,
   ChevronLeft,
   ChevronRight,
+  TrendingUp,
+  BarChart3,
+  CircleDollarSign,
 } from 'lucide-react'
 import {
   ComposedChart,
@@ -28,7 +29,11 @@ import { STATUS_COLORS, CHART_COLORS, TAB_COLORS } from '../../lib/colors'
 import { SHADOWS } from '../../lib/styles'
 import { getMonthRange, getMonthData } from '../../lib/dateUtils'
 import { useExpectedIncome } from '../../hooks/useExpectedIncome'
+import { useCategories } from '../../hooks/useCategories'
+import { useMonthlySummary } from '../../hooks/useMonthlySummary'
 import { MonthPicker } from '../common/MonthPicker'
+import { getIcon } from '../../lib/iconMap'
+import { withOpacity } from '../../lib/colors'
 
 type YearlyChartData = {
   month: string
@@ -52,6 +57,65 @@ export function DashboardView() {
 
   // Use shared hook for expected income
   const { expectedIncome } = useExpectedIncome(selectedMonth)
+  const { categories: dbCategories, findCategoryById } = useCategories()
+  const { categorySummaries } = useMonthlySummary(selectedMonth)
+
+  // RSU vest state
+  const [nextVest, setNextVest] = useState<{
+    vest_date: string
+    shares_vested: number
+    vest_price: number
+    total_gross_value: number
+    company_name: string | null
+  } | null>(null)
+
+  // Category IDs to exclude from spending (income + transfers)
+  const excludedCategoryIds = useMemo(() => {
+    return new Set(
+      dbCategories
+        .filter(c => c.category_type === 'income' || c.category_type === 'transfer')
+        .map(c => c.id)
+    )
+  }, [dbCategories])
+
+  // Top 5 spending categories
+  const topCategories = useMemo(() => {
+    const expenseTypes = new Set(['need', 'want', 'savings_funded'])
+    const filtered = categorySummaries.filter(cs => expenseTypes.has(cs.category_type))
+    return filtered.slice(0, 5).map(cs => {
+      const cat = findCategoryById(cs.category_id)
+      return {
+        id: cs.category_id,
+        name: cat?.name ?? 'Unknown',
+        icon: cat?.icon ?? null,
+        color: cat?.color ?? '#6B7280',
+        amount: cs.total_amount,
+      }
+    })
+  }, [categorySummaries, findCategoryById])
+
+  const topCategoryMax = topCategories.length > 0 ? topCategories[0].amount : 0
+
+  // Fetch upcoming RSU vest
+  useEffect(() => {
+    const fetchNextVest = async () => {
+      const today = new Date().toISOString().split('T')[0]
+      const { data, error } = await supabase
+        .from('rsu_vests')
+        .select('vest_date, shares_vested, vest_price, total_gross_value, company_name')
+        .gte('vest_date', today)
+        .order('vest_date', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+      if (!error && data) {
+        setNextVest(data)
+      } else {
+        setNextVest(null)
+      }
+    }
+    fetchNextVest()
+  }, [])
 
   // Available years for the chart (current year and 2 previous)
   const currentYear = new Date().getFullYear()
@@ -60,23 +124,34 @@ export function DashboardView() {
   // Calculate month data based on selected month
   const monthData = useMemo(() => getMonthData(selectedMonth), [selectedMonth])
 
-  // Fetch total spent from transactions for selected month
+  // Average spending per day
+  const spendingPerDay = useMemo(() => {
+    const elapsed = monthData.daysElapsed
+    if (elapsed === 0) return { avgPerDay: 0, projected: 0 }
+    const avgPerDay = totalSpent / elapsed
+    const projected = avgPerDay * monthData.daysInMonth
+    return { avgPerDay, projected }
+  }, [totalSpent, monthData.daysElapsed, monthData.daysInMonth])
+
+  // Fetch total spent from transactions for selected month (expenses only)
   const fetchTotalSpent = useCallback(async () => {
     const { startOfMonth, endOfMonth } = getMonthRange(selectedMonth)
 
     const { data, error } = await supabase
       .from('transactions')
-      .select('amount')
+      .select('amount, category_id')
       .gte('date', startOfMonth)
       .lte('date', endOfMonth)
 
     if (error) {
       console.error('Error fetching transactions:', error)
     } else if (data) {
-      const total = data.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
+      const total = data
+        .filter(t => !t.category_id || !excludedCategoryIds.has(t.category_id))
+        .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
       setTotalSpent(total)
     }
-  }, [selectedMonth])
+  }, [selectedMonth, excludedCategoryIds])
 
   // Fetch total budget from budgets
   const fetchTotalBudget = useCallback(async () => {
@@ -179,42 +254,14 @@ export function DashboardView() {
   }, [fetchYearlyData])
 
   const budgetTracking = useMemo(() => {
-    const expectedSpending = (totalBudget * monthData.daysElapsed) / monthData.daysInMonth
-    const difference = totalSpent - expectedSpending
     const percentageOfBudget = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0
     const remainingIncome = expectedIncome - totalSpent
-    const percentageOfIncome = expectedIncome > 0 ? (totalSpent / expectedIncome) * 100 : 0
-
-    let status: 'under' | 'on-track' | 'over'
-    let statusColor: string
-    let statusText: string
-
-    if (difference < -totalBudget * 0.1) {
-      status = 'under'
-      statusColor = STATUS_COLORS.success
-      statusText = 'Under budget'
-    } else if (difference > totalBudget * 0.1) {
-      status = 'over'
-      statusColor = STATUS_COLORS.error
-      statusText = 'Over budget'
-    } else {
-      status = 'on-track'
-      statusColor = STATUS_COLORS.warning
-      statusText = 'On track'
-    }
 
     return {
-      totalBudget,
-      expectedSpending,
-      difference,
       remainingIncome,
-      percentageOfIncome,
       percentageOfBudget,
-      status,
-      statusColor,
-      statusText,
     }
-  }, [totalBudget, totalSpent, expectedIncome, monthData])
+  }, [totalBudget, totalSpent, expectedIncome])
 
   // Custom tooltip for the chart
   const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) => {
@@ -330,76 +377,127 @@ export function DashboardView() {
           </motion.div>
         </div>
 
-        {/* Budget Status Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6, duration: 0.4 }}
-          className="bg-white rounded-2xl p-8 shadow-sm mb-8"
-          style={cardStyle}
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-2xl font-bold text-[#1F1410] mb-1">Budget Status</h2>
-              <p className="text-sm text-[#1F1410]/50">Track your spending against your monthly budget</p>
+        {/* Insight Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          {/* Top 5 Spending Categories */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6, duration: 0.4 }}
+            className="bg-white rounded-2xl p-6 shadow-sm"
+            style={cardStyle}
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <BarChart3 className="w-4 h-4" style={{ color: TAB_COLORS.expenses }} />
+              <h3 className="text-sm font-semibold text-[#1F1410]">Top Categories</h3>
             </div>
-            <div className="flex items-center gap-3">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 20, delay: 0.7 }}
-              >
-                {budgetTracking.status === 'under' ? (
-                  <TrendingDown className="w-6 h-6" style={{ color: budgetTracking.statusColor }} />
-                ) : (
-                  <TrendingUp className="w-6 h-6" style={{ color: budgetTracking.statusColor }} />
+            {topCategories.length === 0 ? (
+              <p className="text-sm text-[#1F1410]/40">No spending data yet</p>
+            ) : (
+              <div className="space-y-3">
+                {topCategories.map((cat) => {
+                  const Icon = getIcon(cat.icon)
+                  const pct = topCategoryMax > 0 ? (cat.amount / topCategoryMax) * 100 : 0
+                  return (
+                    <div key={cat.id} className="flex items-center gap-3">
+                      <div
+                        className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: withOpacity(cat.color, 0.12) }}
+                      >
+                        <Icon className="w-3.5 h-3.5" style={{ color: cat.color }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-medium text-[#1F1410] truncate">{cat.name}</span>
+                          <span className="text-xs font-semibold text-[#1F1410] ml-2">{formatCurrency(cat.amount)}</span>
+                        </div>
+                        <div className="h-1.5 bg-[#1F1410]/5 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${pct}%`, backgroundColor: cat.color }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </motion.div>
+
+          {/* Upcoming RSU Vest */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7, duration: 0.4 }}
+            className="bg-white rounded-2xl p-6 shadow-sm"
+            style={cardStyle}
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp className="w-4 h-4" style={{ color: TAB_COLORS.accounts }} />
+              <h3 className="text-sm font-semibold text-[#1F1410]">Upcoming RSU Vest</h3>
+            </div>
+            {nextVest ? (
+              <div className="space-y-3">
+                {nextVest.company_name && (
+                  <p className="text-xs font-medium text-[#1F1410]/50">{nextVest.company_name}</p>
                 )}
-              </motion.div>
-              <span className="font-bold text-xl" style={{ color: budgetTracking.statusColor }}>
-                {budgetTracking.statusText}
-              </span>
-            </div>
-          </div>
+                <p className="text-2xl font-bold text-[#1F1410]">
+                  {formatCurrency(nextVest.total_gross_value)}
+                </p>
+                <div className="flex items-center justify-between text-xs text-[#1F1410]/50">
+                  <span>{nextVest.shares_vested.toLocaleString()} shares @ {formatCurrency(nextVest.vest_price)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <Calendar className="w-3.5 h-3.5 text-[#1F1410]/40" />
+                  <span className="text-[#1F1410]/60">
+                    {new Date(nextVest.vest_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-4">
+                <TrendingUp className="w-8 h-8 text-[#1F1410]/10 mb-2" />
+                <p className="text-sm text-[#1F1410]/40">No upcoming vests</p>
+              </div>
+            )}
+          </motion.div>
 
-          {/* Progress Bars */}
-          <div className="space-y-6">
-            <div>
-              <div className="flex justify-between text-sm text-[#1F1410]/60 mb-2">
-                <span>Spent vs Budget</span>
-                <span className="font-semibold text-[#1F1410]">
-                  {formatCurrency(totalSpent)} / {formatCurrency(totalBudget)}
-                </span>
-              </div>
-              <div className="h-3 bg-[#1F1410]/5 rounded-full overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(budgetTracking.percentageOfBudget, 100)}%` }}
-                  transition={{ duration: 1, delay: 0.8, ease: 'easeOut' }}
-                  className="h-full rounded-full"
-                  style={{ backgroundColor: budgetTracking.statusColor }}
-                />
-              </div>
+          {/* Average Spending Per Day */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8, duration: 0.4 }}
+            className="bg-white rounded-2xl p-6 shadow-sm"
+            style={cardStyle}
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <CircleDollarSign className="w-4 h-4" style={{ color: TAB_COLORS.budget }} />
+              <h3 className="text-sm font-semibold text-[#1F1410]">Daily Spending</h3>
             </div>
-
-            <div>
-              <div className="flex justify-between text-sm text-[#1F1410]/60 mb-2">
-                <span>Spent vs Income</span>
-                <span className="font-semibold text-[#1F1410]">
-                  {formatPercent(budgetTracking.percentageOfIncome)} used
-                </span>
+            <p className="text-2xl font-bold text-[#1F1410] mb-1">
+              {formatCurrency(spendingPerDay.avgPerDay)}
+            </p>
+            <p className="text-xs text-[#1F1410]/40 mb-4">per day average</p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-[#1F1410]/50">Projected month total</span>
+                <span className="font-semibold text-[#1F1410]">{formatCurrency(spendingPerDay.projected)}</span>
               </div>
-              <div className="h-3 bg-[#1F1410]/5 rounded-full overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(budgetTracking.percentageOfIncome, 100)}%` }}
-                  transition={{ duration: 1, delay: 0.9, ease: 'easeOut' }}
-                  className="h-full rounded-full"
-                  style={{ backgroundColor: STATUS_COLORS.success }}
-                />
-              </div>
+              {totalBudget > 0 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[#1F1410]/50">vs. Budget</span>
+                  <span
+                    className="font-semibold"
+                    style={{ color: spendingPerDay.projected <= totalBudget ? STATUS_COLORS.success : STATUS_COLORS.error }}
+                  >
+                    {spendingPerDay.projected <= totalBudget ? 'On track' : `${formatCurrency(spendingPerDay.projected - totalBudget)} over`}
+                  </span>
+                </div>
+              )}
             </div>
-          </div>
-        </motion.div>
+          </motion.div>
+        </div>
 
         {/* Yearly Chart */}
         <motion.div
