@@ -35,6 +35,7 @@ type DBBudgetWithCategory = {
     name: string
     icon: string
     color: string
+    display_order: number
   } | null
 }
 
@@ -53,9 +54,11 @@ export type CategoryBudget = {
   icon: LucideIcon
   iconName: string
   budget: number
+  lastMonthBudget: number
   lastMonthSpent: number
   color: string
   type: CategoryType
+  display_order: number
 }
 
 // Database savings goal type
@@ -126,9 +129,11 @@ function dbToUI(budget: DBBudgetWithCategory): CategoryBudget {
     icon: getIcon(budget.icon),
     iconName: budget.icon,
     budget: Number(budget.monthly_limit),
-    lastMonthSpent: 0, // TODO: Calculate from transactions
+    lastMonthBudget: 0,
+    lastMonthSpent: 0,
     color: budget.color,
     type: budget.budget_type,
+    display_order: budget.categories?.display_order ?? 0,
   }
 }
 
@@ -158,7 +163,7 @@ const DEFAULT_BUDGET_AMOUNTS: Record<string, number> = {
 
 export function BudgetView() {
   const { userId } = useUser()
-  const { createCategory: createDbCategory, updateCategory: updateDbCategory, deleteCategory: deleteDbCategory, seedDefaultCategories, needCategories, wantCategories, incomeCategories, transferCategories, savingsFundedCategories, loading: categoriesLoading } = useCategories()
+  const { createCategory: createDbCategory, updateCategory: updateDbCategory, updateCategoryOrder, deleteCategory: deleteDbCategory, seedDefaultCategories, needCategories, wantCategories, incomeCategories, transferCategories, savingsFundedCategories, loading: categoriesLoading } = useCategories()
   const [budgets, setBudgets] = useState<CategoryBudget[]>([])
   const [loading, setLoading] = useState(true)
   const [seeding, setSeeding] = useState(false)
@@ -237,7 +242,8 @@ export function BudgetView() {
           parent_id,
           name,
           icon,
-          color
+          color,
+          display_order
         )
       `)
       .eq('is_active', true)
@@ -278,7 +284,8 @@ export function BudgetView() {
               parent_id,
               name,
               icon,
-              color
+              color,
+              display_order
             )
           `)
 
@@ -318,11 +325,44 @@ export function BudgetView() {
     }
   }, [])
 
+  // Fetch last month's budget snapshots and merge into budgets
+  const fetchLastMonthBudgets = useCallback(async () => {
+    const lastMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1)
+    const monthStr = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}-01`
+
+    const { data, error } = await supabase
+      .from('budget_months')
+      .select('budget_id, monthly_limit')
+      .eq('month', monthStr)
+
+    if (error) {
+      console.error('Error fetching last month budgets:', error)
+      return
+    }
+
+    if (data && data.length > 0) {
+      const lastMonthMap = new Map(data.map(d => [d.budget_id, Number(d.monthly_limit)]))
+      setBudgets(prev =>
+        prev.map(b => ({
+          ...b,
+          lastMonthBudget: lastMonthMap.get(b.id) ?? 0,
+        }))
+      )
+    }
+  }, [selectedMonth])
+
   // Fetch on mount and when selected month changes
   useEffect(() => {
     fetchBudgets()
     fetchSavingsGoals()
   }, [fetchBudgets, fetchSavingsGoals, selectedMonth])
+
+  // Fetch last month budgets after main budgets load
+  useEffect(() => {
+    if (budgets.length > 0 && !loading) {
+      fetchLastMonthBudgets()
+    }
+  }, [loading, budgets.length, fetchLastMonthBudgets])
 
   // IDs of categories that are parents (have children) — exclude from totals to avoid double-counting
   const parentCategoryIds = useMemo(() => {
@@ -359,7 +399,7 @@ export function BudgetView() {
     [leafBudgets, savingsBudget],
   )
 
-  // Update budget in database (debounced)
+  // Update budget in database (debounced) + upsert monthly snapshot
   const updateBudgetInDB = useCallback(async (id: string, value: number) => {
     const { error } = await supabase
       .from('budgets')
@@ -368,8 +408,24 @@ export function BudgetView() {
 
     if (error) {
       console.error('Error updating budget:', error)
+      return
     }
-  }, [])
+
+    // Upsert into budget_months for the selected month
+    if (userId) {
+      const monthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}-01`
+      const { error: upsertError } = await supabase
+        .from('budget_months')
+        .upsert(
+          { user_id: userId, budget_id: id, month: monthStr, monthly_limit: value },
+          { onConflict: 'budget_id,month' }
+        )
+
+      if (upsertError) {
+        console.error('Error upserting budget_months:', upsertError)
+      }
+    }
+  }, [userId, selectedMonth])
 
   // Debounce ref for budget updates
   const debounceRef = useRef<Record<string, NodeJS.Timeout>>({})
@@ -431,6 +487,52 @@ export function BudgetView() {
       updateSavingsBudgetInDB(id, numValue)
     }, 500)
   }
+
+  // Handle reorder: given new ordered list, compute display_order and persist
+  const handleReorder = useCallback(async (orderedBudgets: CategoryBudget[]) => {
+    // Update local state immediately
+    const updates: { id: string; display_order: number }[] = []
+    const updatedBudgets = orderedBudgets.map((b, i) => {
+      const newOrder = (i + 1) * 10
+      if (b.category_id) {
+        updates.push({ id: b.category_id, display_order: newOrder })
+      }
+      return { ...b, display_order: newOrder }
+    })
+
+    setBudgets(updatedBudgets)
+
+    if (updates.length > 0) {
+      await updateCategoryOrder(updates)
+    }
+  }, [updateCategoryOrder])
+
+  // Handle setting a parent for a category
+  const handleSetParent = useCallback(async (categoryId: string, parentId: string | null) => {
+    // Prevent circular refs: a category cannot be its own parent
+    if (categoryId === parentId) return
+
+    // Check that parentId is not a child of categoryId (prevent cycles)
+    if (parentId) {
+      const potentialChild = budgets.find(b => b.category_id === parentId)
+      if (potentialChild?.parent_id === categoryId) return
+    }
+
+    const updated = await updateDbCategory({ id: categoryId, parent_id: parentId ?? null })
+    if (!updated) return
+
+    // Update local budget state
+    setBudgets(prev =>
+      prev.map(b =>
+        b.category_id === categoryId
+          ? { ...b, parent_id: parentId ?? null }
+          : b
+      )
+    )
+
+    // Also update the budget row's category join info by syncing parent_id
+    // (The DB budget reads parent_id from categories, so it's already correct on next fetch)
+  }, [budgets, updateDbCategory])
 
   const handleCreateCategory = async (data: {
     name: string
@@ -650,6 +752,8 @@ export function BudgetView() {
             onBudgetChange={handleBudgetChange}
             onDeleteCategory={handleDeleteCategoryClick}
             onEditCategory={handleUpdateCategory}
+            onReorder={handleReorder}
+            onSetParent={handleSetParent}
           />
 
           {/* Savings Section */}

@@ -11,6 +11,7 @@ type UseCategoriesReturn = {
   // CRUD operations
   createCategory: (category: Omit<CategoryInsert, 'user_id'>) => Promise<Category | null>
   updateCategory: (update: CategoryUpdate) => Promise<Category | null>
+  updateCategoryOrder: (updates: { id: string; display_order: number }[]) => Promise<boolean>
   deleteCategory: (id: string) => Promise<boolean>
   seedDefaultCategories: () => Promise<Category[]>
   // Helpers
@@ -49,6 +50,7 @@ export function useCategories(): UseCategoriesReturn {
       .from('categories')
       .select('*')
       .eq('is_active', true)
+      .order('display_order')
       .order('name')
 
     if (fetchError) {
@@ -99,7 +101,7 @@ export function useCategories(): UseCategoriesReturn {
     }
 
     const newCategory = data as Category
-    setCategories(prev => [...prev, newCategory].sort((a, b) => a.name.localeCompare(b.name)))
+    setCategories(prev => [...prev, newCategory].sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name)))
     return newCategory
   }, [userId, categories])
 
@@ -129,9 +131,39 @@ export function useCategories(): UseCategoriesReturn {
     const updatedCategory = data as Category
     setCategories(prev =>
       prev.map(c => c.id === id ? updatedCategory : c)
-        .sort((a, b) => a.name.localeCompare(b.name))
+        .sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name))
     )
     return updatedCategory
+  }, [])
+
+  const updateCategoryOrder = useCallback(async (
+    updates: { id: string; display_order: number }[]
+  ): Promise<boolean> => {
+    // Batch update display_order for multiple categories
+    const promises = updates.map(({ id, display_order }) =>
+      supabase
+        .from('categories')
+        .update({ display_order })
+        .eq('id', id)
+    )
+
+    const results = await Promise.all(promises)
+    const failed = results.find(r => r.error)
+
+    if (failed?.error) {
+      console.error('Error updating category order:', failed.error)
+      setError(failed.error.message)
+      return false
+    }
+
+    // Update local state
+    setCategories(prev => {
+      const orderMap = new Map(updates.map(u => [u.id, u.display_order]))
+      return prev.map(c => orderMap.has(c.id) ? { ...c, display_order: orderMap.get(c.id)! } : c)
+        .sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name))
+    })
+
+    return true
   }, [])
 
   const deleteCategory = useCallback(async (id: string): Promise<boolean> => {
@@ -214,11 +246,11 @@ export function useCategories(): UseCategoriesReturn {
       }
 
       const allCategories = [...createdParents, ...(childData as Category[])]
-      setCategories(allCategories.sort((a, b) => a.name.localeCompare(b.name)))
+      setCategories(allCategories.sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name)))
       return allCategories
     }
 
-    setCategories(createdParents.sort((a, b) => a.name.localeCompare(b.name)))
+    setCategories(createdParents.sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name)))
     return createdParents
   }, [userId])
 
@@ -276,6 +308,7 @@ export function useCategories(): UseCategoriesReturn {
     error,
     createCategory,
     updateCategory,
+    updateCategoryOrder,
     deleteCategory,
     seedDefaultCategories,
     findCategoryByName,

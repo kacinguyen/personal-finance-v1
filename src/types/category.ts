@@ -29,6 +29,7 @@ export type Category = {
   color: string
   category_type: CategoryType
   parent_id: string | null
+  display_order: number
   is_system: boolean
   is_active: boolean
   is_budgetable: boolean
@@ -39,10 +40,11 @@ export type Category = {
 /**
  * Input type for creating a new category (omits auto-generated fields)
  */
-export type CategoryInsert = Omit<Category, 'id' | 'created_at' | 'updated_at' | 'normalized_name' | 'parent_id' | 'is_budgetable'> & {
+export type CategoryInsert = Omit<Category, 'id' | 'created_at' | 'updated_at' | 'normalized_name' | 'parent_id' | 'is_budgetable' | 'display_order'> & {
   id?: string
   normalized_name?: string
   parent_id?: string | null
+  display_order?: number
   is_budgetable?: boolean
   created_at?: string
   updated_at?: string
