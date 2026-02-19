@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LucideIcon, ChevronDown, X } from 'lucide-react'
+import { LucideIcon, ChevronDown, X, CreditCard } from 'lucide-react'
 
 type CategoryWithBudget = {
   id: string
@@ -13,10 +13,24 @@ type CategoryWithBudget = {
   parent_id?: string | null
 }
 
+export type InlineTransaction = {
+  id: string
+  icon: LucideIcon
+  merchant: string
+  category: string
+  category_id: string | null
+  date: string
+  amount: number
+  color: string
+  source: string
+}
+
 type CategoryProgressListProps = {
   categories: CategoryWithBudget[]
   selectedCategoryId?: string | null
   onCategorySelect?: (categoryId: string | null) => void
+  transactions?: InlineTransaction[]
+  childCategoryIds?: (parentId: string) => string[]
 }
 
 type ParentGroup = {
@@ -30,12 +44,27 @@ type CategoryGroupProps = {
   defaultExpanded?: boolean
   selectedCategoryId?: string | null
   onCategorySelect?: (categoryId: string | null) => void
+  transactions?: InlineTransaction[]
+  childCategoryIds?: (parentId: string) => string[]
 }
 
-function CategoryGroup({ parent, children, defaultExpanded = true, selectedCategoryId, onCategorySelect }: CategoryGroupProps) {
+function CategoryGroup({ parent, children, defaultExpanded = true, selectedCategoryId, onCategorySelect, transactions, childCategoryIds }: CategoryGroupProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
 
   const isParentSelected = selectedCategoryId === parent.id
+
+  // Get transactions for the parent (includes all children)
+  const parentTransactions = useMemo(() => {
+    if (!isParentSelected || !transactions) return []
+    const allIds = [parent.id, ...(childCategoryIds?.(parent.id) ?? [])]
+    return transactions.filter(t => t.category_id && allIds.includes(t.category_id))
+  }, [isParentSelected, transactions, parent.id, childCategoryIds])
+
+  // Get transactions for a specific child category
+  const getChildTransactions = (childId: string) => {
+    if (selectedCategoryId !== childId || !transactions) return []
+    return transactions.filter(t => t.category_id === childId)
+  }
 
   // Filter children to only those with activity (for consistent counting and rendering)
   const activeChildren = useMemo(() =>
@@ -146,6 +175,21 @@ function CategoryGroup({ parent, children, defaultExpanded = true, selectedCateg
           />
         </div>
       )}
+
+      {/* Inline transactions for parent-level selection */}
+      <AnimatePresence initial={false}>
+        {isParentSelected && parentTransactions.length > 0 && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <InlineTransactionList transactions={parentTransactions} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Child Categories List */}
       <AnimatePresence initial={false}>
@@ -262,6 +306,24 @@ function CategoryGroup({ parent, children, defaultExpanded = true, selectedCateg
                         />
                       </motion.div>
                     </div>
+
+                    {/* Inline transactions for child selection */}
+                    <AnimatePresence initial={false}>
+                      {isSelected && (() => {
+                        const childTxs = getChildTransactions(category.id)
+                        return childTxs.length > 0 ? (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2, ease: 'easeInOut' }}
+                            className="overflow-hidden"
+                          >
+                            <InlineTransactionList transactions={childTxs} />
+                          </motion.div>
+                        ) : null
+                      })()}
+                    </AnimatePresence>
                   </motion.div>
                 )
               })}
@@ -273,7 +335,47 @@ function CategoryGroup({ parent, children, defaultExpanded = true, selectedCateg
   )
 }
 
-export function CategoryProgressList({ categories, selectedCategoryId, onCategorySelect }: CategoryProgressListProps) {
+function InlineTransactionList({ transactions }: { transactions: InlineTransaction[] }) {
+  return (
+    <div className="mt-2 mb-1 mx-1 rounded-xl bg-[#1F1410]/[0.02] border border-[#1F1410]/5 divide-y divide-[#1F1410]/5 overflow-hidden">
+      {transactions.map((tx, i) => {
+        const TxIcon = tx.icon
+        return (
+          <motion.div
+            key={tx.id}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.03, duration: 0.2 }}
+            className="flex items-center gap-3 px-3 py-2.5"
+          >
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: tx.color }}
+            >
+              <TxIcon className="w-4 h-4 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-[#1F1410] truncate">{tx.merchant}</p>
+              <div className="flex items-center gap-1.5 text-xs text-[#1F1410]/40">
+                <span>{tx.date}</span>
+                <span>·</span>
+                <div className="flex items-center gap-0.5">
+                  <CreditCard className="w-3 h-3" />
+                  <span>{tx.source}</span>
+                </div>
+              </div>
+            </div>
+            <span className="text-sm font-semibold text-[#1F1410] flex-shrink-0">
+              -${tx.amount.toFixed(2)}
+            </span>
+          </motion.div>
+        )
+      })}
+    </div>
+  )
+}
+
+export function CategoryProgressList({ categories, selectedCategoryId, onCategorySelect, transactions, childCategoryIds }: CategoryProgressListProps) {
   // Organize categories into parent-child hierarchy
   const parentGroups = useMemo((): ParentGroup[] => {
     // Separate parents (no parent_id) and children (has parent_id)
@@ -336,6 +438,8 @@ export function CategoryProgressList({ categories, selectedCategoryId, onCategor
             defaultExpanded={true}
             selectedCategoryId={selectedCategoryId}
             onCategorySelect={onCategorySelect}
+            transactions={transactions}
+            childCategoryIds={childCategoryIds}
           />
         ))
       )}

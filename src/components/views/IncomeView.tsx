@@ -2,14 +2,8 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
   TrendingUp,
-  Building2,
-  PiggyBank,
-  Heart,
-  Calendar,
-  ChevronRight,
 } from 'lucide-react'
 import { type ImportResult } from '../../lib/paystubImport'
-import { PaycheckWaterfallChart } from '../charts/PaycheckWaterfallChart'
 import { PaystubReviewModal } from '../modals/PaystubReviewModal'
 import { supabase } from '../../lib/supabase'
 import { MonthPicker } from '../common/MonthPicker'
@@ -18,10 +12,11 @@ import { useCategories } from '../../hooks/useCategories'
 import { getIcon, DEFAULT_COLOR } from '../../lib/iconMap'
 import type { Transaction } from '../../types/transaction'
 
-import { IncomeExpectedSummary } from '../income/IncomeExpectedSummary'
-import { OtherIncomeSection } from '../income/OtherIncomeSection'
-import { ContributionPanel } from '../income/ContributionPanel'
-import { PaychecksDataWidget } from '../income/PaychecksDataWidget'
+import { NextPaycheckCard } from '../income/NextPaycheckCard'
+import { YearlyIncomeChart } from '../income/YearlyIncomeChart'
+import { IncomeSummaryTab } from '../income/IncomeSummaryTab'
+import { IncomeTypesTab } from '../income/IncomeTypesTab'
+import { IncomeTransactionHistoryTab } from '../income/IncomeTransactionHistoryTab'
 
 export type PaystubRecord = {
   id: string
@@ -351,23 +346,14 @@ export function IncomeView() {
     }
   }, [paystubs, selectedMonth])
 
-  // Build 401k line items for the ContributionPanel
-  const fourOhOneKLineItems = useMemo(() => {
-    const items = []
-    if (contributions.traditional_401k > 0) {
-      items.push({ label: 'Traditional', value: contributions.traditional_401k })
-    }
-    if (contributions.roth_401k > 0) {
-      items.push({ label: 'Roth', value: contributions.roth_401k })
-    }
-    if (contributions.after_tax_401k > 0) {
-      items.push({ label: 'After-Tax', value: contributions.after_tax_401k })
-    }
-    if (contributions.employer_401k_match > 0) {
-      items.push({ label: 'Employer Match', value: contributions.employer_401k_match, highlight: true })
-    }
-    return items
-  }, [contributions])
+  // Tab state
+  const [activeIncomeTab, setActiveIncomeTab] = useState<'summary' | 'income-types' | 'history'>('summary')
+
+  const incomeTabs = [
+    { id: 'summary' as const, label: 'Summary' },
+    { id: 'income-types' as const, label: 'Income Types' },
+    { id: 'history' as const, label: 'Transactions' },
+  ]
 
   const handleImportResult = useCallback((result: ImportResult) => {
     setImportResult(result)
@@ -419,138 +405,105 @@ export function IncomeView() {
           </div>
         </motion.div>
 
+        {/* Yearly Income Chart — Full Width */}
+        <YearlyIncomeChart paystubs={paystubs} selectedMonth={selectedMonth} />
+
         {/* Two Column Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Content - Left Column (2/3 width) */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Expected Income Summary */}
-            <IncomeExpectedSummary
-              selectedMonth={selectedMonth}
-              totalExpectedIncome={totalExpectedIncome}
-              expectedSalaryIncome={expectedSalaryIncome}
-              salaryTransactionIncome={salaryTransactionIncome}
-              incomeChange={incomeChange}
-              incomeChangePercentage={incomeChangePercentage}
-              isProjected={isProjected}
-              projectionBasis={projectionBasis}
-              incomeTransactionCount={incomeTransactions.length}
-              salaryTransactions={salaryTransactions}
-              loadingIncomeTransactions={loadingIncomeTransactions}
-            />
-
-            {/* Other Income */}
-            <OtherIncomeSection
-              categories={otherIncome.categories}
-              total={otherIncome.total}
-              loading={loadingIncomeTransactions}
-            />
-
-            {/* Paycheck Waterfall Chart */}
-            <PaycheckWaterfallChart paystubs={displayPaystubs} />
-
-            {/* Paychecks Data Widget */}
-            <PaychecksDataWidget
-              paystubCount={paystubs.length}
-              loadingPaystubs={loadingPaystubs}
-              isProcessingPDF={isProcessingPDF}
-              currentFileName={currentFileName}
-              importError={importError}
-              successMessage={successMessage}
-              onProcessingStart={() => { setIsProcessingPDF(true); setSuccessMessage(null) }}
-              onProcessingEnd={() => setIsProcessingPDF(false)}
-              onFileNameChange={setCurrentFileName}
-              onPdfFileChange={setCurrentPdfFile}
-              onImportResult={handleImportResult}
-              onImportError={setImportError}
-              onUploadClick={handleUploadDocument}
-              fileInputRef={fileInputRef}
-            />
-          </div>
-
-          {/* Right Column - Contributions & Benefits Panel */}
-          <div className="lg:col-span-1 space-y-6">
-            {/* 401K Contributions */}
-            <ContributionPanel
-              title="401(k) Contributions"
-              selectedMonth={selectedMonth}
-              icon={PiggyBank}
-              iconBgClass="bg-[#6366F1]/10"
-              iconTextClass="text-[#6366F1]"
-              accentColor="#6366F1"
-              lineItems={fourOhOneKLineItems}
-              amount={contributions.total401kWithMatch}
-              ytdTotal={ytdContributions.total401kWithMatch}
-              animationDelay={0.4}
-            />
-
-            {/* HSA Contributions */}
-            <ContributionPanel
-              title="HSA Contributions"
-              selectedMonth={selectedMonth}
-              icon={Heart}
-              iconBgClass="bg-[#EC4899]/10"
-              iconTextClass="text-[#EC4899]"
-              accentColor="#EC4899"
-              amount={contributions.hsa}
-              ytdTotal={ytdContributions.hsa}
-              animationDelay={0.5}
-            />
-
-            {/* ESPP Contributions */}
-            <ContributionPanel
-              title="ESPP Contributions"
-              selectedMonth={selectedMonth}
-              icon={Building2}
-              iconBgClass="bg-[#14B8A6]/10"
-              iconTextClass="text-[#14B8A6]"
-              accentColor="#14B8A6"
-              amount={contributions.espp}
-              ytdTotal={ytdContributions.espp}
-              animationDelay={0.6}
-            />
-
-            {/* Upcoming Events */}
+          <div className="lg:col-span-2">
             <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.7, duration: 0.4 }}
-              className="bg-white rounded-2xl p-5 shadow-sm"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.4 }}
+              className="bg-white rounded-2xl shadow-sm overflow-hidden"
               style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
             >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-[#F59E0B]/10 flex items-center justify-center">
-                  <Calendar className="w-5 h-5 text-[#F59E0B]" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-[#1F1410]">Upcoming Events</h3>
-                  <p className="text-xs text-[#1F1410]/40">Vesting & Purchase Dates</p>
-                </div>
+              {/* Tab bar */}
+              <div className="flex border-b border-[#1F1410]/5">
+                {incomeTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveIncomeTab(tab.id)}
+                    className={`relative px-5 py-3 text-sm font-medium transition-colors ${
+                      activeIncomeTab === tab.id
+                        ? 'text-[#10B981]'
+                        : 'text-[#1F1410]/50 hover:text-[#1F1410]/80'
+                    }`}
+                  >
+                    {tab.label}
+                    {activeIncomeTab === tab.id && (
+                      <motion.div
+                        layoutId="income-tab-indicator"
+                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#10B981]"
+                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                      />
+                    )}
+                  </button>
+                ))}
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 p-2 rounded-lg bg-[#8B5CF6]/5">
-                  <div className="w-8 h-8 rounded-lg bg-[#8B5CF6]/10 flex items-center justify-center">
-                    <TrendingUp className="w-4 h-4 text-[#8B5CF6]" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-[#1F1410]">RSU Vest</p>
-                    <p className="text-xs text-[#1F1410]/40">Add vesting schedule</p>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-[#1F1410]/30" />
-                </div>
-
-                <div className="flex items-center gap-3 p-2 rounded-lg bg-[#14B8A6]/5">
-                  <div className="w-8 h-8 rounded-lg bg-[#14B8A6]/10 flex items-center justify-center">
-                    <Building2 className="w-4 h-4 text-[#14B8A6]" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-[#1F1410]">ESPP Purchase</p>
-                    <p className="text-xs text-[#1F1410]/40">Add purchase period</p>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-[#1F1410]/30" />
-                </div>
+              {/* Tab content */}
+              <div className="p-6">
+                {activeIncomeTab === 'summary' && (
+                  <IncomeSummaryTab
+                    selectedMonth={selectedMonth}
+                    totalExpectedIncome={totalExpectedIncome}
+                    expectedSalaryIncome={expectedSalaryIncome}
+                    otherIncomeTotal={otherIncome.total}
+                    otherIncomeCategories={otherIncome.categories}
+                    incomeChange={incomeChange}
+                    incomeChangePercentage={incomeChangePercentage}
+                    isProjected={isProjected}
+                    projectionBasis={projectionBasis}
+                    salaryTransactions={salaryTransactions}
+                    loading={loadingIncomeTransactions}
+                    paystubs={paystubs}
+                  />
+                )}
+                {activeIncomeTab === 'income-types' && (
+                  <IncomeTypesTab
+                    selectedMonth={selectedMonth}
+                    contributions={contributions}
+                    ytdContributions={ytdContributions}
+                    displayPaystubs={displayPaystubs}
+                    paystubs={paystubs}
+                    expectedSalaryIncome={expectedSalaryIncome}
+                    otherIncomeTotal={otherIncome.total}
+                  />
+                )}
+                {activeIncomeTab === 'history' && (
+                  <IncomeTransactionHistoryTab
+                    selectedMonth={selectedMonth}
+                    salaryTransactions={salaryTransactions}
+                    otherIncome={otherIncome}
+                    loading={loadingIncomeTransactions}
+                    paystubs={paystubs}
+                    isProcessingPDF={isProcessingPDF}
+                    currentFileName={currentFileName}
+                    importError={importError}
+                    successMessage={successMessage}
+                    onProcessingStart={() => { setIsProcessingPDF(true); setSuccessMessage(null) }}
+                    onProcessingEnd={() => setIsProcessingPDF(false)}
+                    onFileNameChange={setCurrentFileName}
+                    onPdfFileChange={setCurrentPdfFile}
+                    onImportResult={handleImportResult}
+                    onImportError={setImportError}
+                    onUploadClick={handleUploadDocument}
+                    fileInputRef={fileInputRef}
+                  />
+                )}
               </div>
             </motion.div>
+          </div>
+
+          {/* Right Column - Coming Up */}
+          <div className="lg:col-span-1 space-y-6">
+            <NextPaycheckCard
+              paystubs={paystubs}
+              onUploadClick={handleUploadDocument}
+              loading={loadingPaystubs}
+            />
           </div>
         </div>
       </div>

@@ -8,12 +8,8 @@ import {
   Wallet,
   LucideIcon,
   CircleDollarSign,
-  ChevronLeft,
-  ChevronRight,
-  X,
 } from 'lucide-react'
 import { CategoryProgressList } from '../common/CategoryProgressList'
-import { ReadOnlyTransactionItem } from '../common/ReadOnlyTransactionItem'
 import type { UICategory } from '../../types/category'
 import { dbCategoryToUI } from '../../lib/categoryUtils'
 import { CsvDropzone } from '../common/CsvDropzone'
@@ -23,7 +19,6 @@ import { getIcon, DEFAULT_COLOR } from '../../lib/iconMap'
 import { useCategories } from '../../hooks/useCategories'
 import { STATUS_COLORS } from '../../lib/colors'
 import { SpendingVelocityChart } from '../charts/SpendingVelocityChart'
-import { CategorySpendingHeatmap } from '../charts/CategorySpendingHeatmap'
 import { MonthPicker } from '../common/MonthPicker'
 import { getMonthRange, getMonthData } from '../../lib/dateUtils'
 import { useExpectedIncome } from '../../hooks/useExpectedIncome'
@@ -69,13 +64,9 @@ function formatDisplayDate(dateStr: string): string {
 }
 
 export function TransactionFeed() {
-  const ITEMS_PER_PAGE = 20
-
   const { userId } = useUser()
   const { categories: dbCategories, findCategoryByName, refetch: refetchCategories } = useCategories()
   const [transactions, setTransactions] = useState<UITransaction[]>([])
-  const [loading, setLoading] = useState(true)
-  const [currentPage, setCurrentPage] = useState(1)
   const [budgets, setBudgets] = useState<Record<string, number>>({})
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date()
@@ -127,7 +118,6 @@ export function TransactionFeed() {
 
   // Fetch transactions from Supabase for selected month
   const fetchTransactions = useCallback(async () => {
-    setLoading(true)
     const { startOfMonth, endOfMonth } = getMonthRange(selectedMonth)
 
     const { data, error } = await supabase
@@ -146,7 +136,6 @@ export function TransactionFeed() {
       const uiTransactions = filtered.map(mapDBToUI)
       setTransactions(uiTransactions)
     }
-    setLoading(false)
   }, [mapDBToUI, selectedMonth, excludedCategoryIds])
 
   // Expected income from shared hook (transaction-based with salary projection)
@@ -246,38 +235,10 @@ export function TransactionFeed() {
       .map(c => c.id)
   }, [dbCategories])
 
-  // Filter transactions by selected category (includes children for parent categories)
-  const filteredTransactions = useMemo(() => {
-    if (!selectedCategoryId) return transactions
-    const childIds = getChildCategoryIds(selectedCategoryId)
-    const categoryIdsToMatch = [selectedCategoryId, ...childIds]
-    return transactions.filter(t =>
-      t.category_id && categoryIdsToMatch.includes(t.category_id)
-    )
-  }, [transactions, selectedCategoryId, getChildCategoryIds])
-
-  // Get selected category info for display
-  const selectedCategory = useMemo(() => {
-    if (!selectedCategoryId) return null
-    return categoriesWithTotals.find(c => c.id === selectedCategoryId) || null
-  }, [selectedCategoryId, categoriesWithTotals])
-
   const totalSpent = useMemo(
     () => transactions.reduce((sum, t) => sum + t.amount, 0),
     [transactions]
   )
-
-  // Pagination - uses filtered transactions when a category is selected
-  const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE)
-  const paginatedTransactions = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
-    return filteredTransactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-  }, [filteredTransactions, currentPage])
-
-  // Reset to page 1 when transactions change (e.g., after import) or filter changes
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [transactions.length, selectedCategoryId])
 
   const budgetTracking = useMemo(() => {
     const totalBudget = categoriesWithTotals.reduce((sum, cat) => sum + cat.budget, 0)
@@ -508,136 +469,19 @@ export function TransactionFeed() {
           selectedMonth={selectedMonth}
         />
 
-        {/* Category Spending Heatmap */}
-        <CategorySpendingHeatmap
-          categories={dbCategories}
-          excludedCategoryIds={excludedCategoryIds}
-        />
-
-        {/* Two Column Layout: Budgets (Left) and Transactions (Right) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Category Budgets Progress List - Left Column (1/3 width on large screens) */}
-          <div className="lg:col-span-1">
-            <h2 className="text-xl font-bold text-[#1F1410] mb-4 px-1">Category Budgets</h2>
-            <CategoryProgressList
-              categories={categoriesWithTotals}
-              selectedCategoryId={selectedCategoryId}
-              onCategorySelect={setSelectedCategoryId}
-            />
+        {/* Category Budgets with inline transactions */}
+        <div className="max-w-3xl mx-auto">
+          <div className="flex items-center justify-between mb-4 px-1">
+            <h2 className="text-xl font-bold text-[#1F1410]">Category Budgets</h2>
+            <CsvDropzone onFilesAdded={handleCsvImport} />
           </div>
-
-          {/* Transactions Section - Right Column (2/3 width on large screens) */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6, duration: 0.4 }}
-            className="lg:col-span-2"
-          >
-            <div className="flex items-center justify-between mb-4 px-1">
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-bold text-[#1F1410]">
-                  {selectedCategory ? selectedCategory.name : 'Recent Transactions'}
-                </h2>
-                {selectedCategory && (
-                  <button
-                    onClick={() => setSelectedCategoryId(null)}
-                    className="flex items-center justify-center w-6 h-6 rounded-full bg-[#1F1410]/10 hover:bg-[#1F1410]/20 transition-colors"
-                    title="Clear filter"
-                  >
-                    <X className="w-3.5 h-3.5 text-[#1F1410]/70" />
-                  </button>
-                )}
-              </div>
-              <CsvDropzone onFilesAdded={handleCsvImport} />
-            </div>
-            <div
-              className="bg-white rounded-2xl shadow-sm overflow-hidden"
-              style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
-            >
-              {loading ? (
-                <div className="p-8 text-center">
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                    className="w-8 h-8 border-2 border-[#F59E0B] border-t-transparent rounded-full mx-auto mb-3"
-                  />
-                  <p className="text-[#1F1410]/50">Loading transactions...</p>
-                </div>
-              ) : filteredTransactions.length === 0 ? (
-                <div className="p-8 text-center">
-                  <CircleDollarSign className="w-12 h-12 text-[#1F1410]/20 mx-auto mb-3" />
-                  {selectedCategory ? (
-                    <>
-                      <p className="text-[#1F1410]/50 mb-2">No transactions in {selectedCategory.name}</p>
-                      <button
-                        onClick={() => setSelectedCategoryId(null)}
-                        className="text-sm text-[#F59E0B] hover:text-[#D97706] font-medium transition-colors"
-                      >
-                        Show all transactions
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-[#1F1410]/50 mb-2">No transactions yet</p>
-                      <p className="text-sm text-[#1F1410]/40">Import a CSV to get started</p>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <div className="divide-y divide-[#1F1410]/5">
-                    {paginatedTransactions.map((transaction, index) => (
-                      <ReadOnlyTransactionItem
-                        key={transaction.id}
-                        icon={transaction.icon}
-                        merchant={transaction.merchant}
-                        category={transaction.category}
-                        date={transaction.date}
-                        amount={transaction.amount}
-                        color={transaction.color}
-                        source={transaction.source}
-                        index={index}
-                      />
-                    ))}
-                  </div>
-
-                  {/* Pagination Controls */}
-                  {totalPages > 1 && (
-                    <div className="flex items-center justify-between px-6 py-4 border-t border-[#1F1410]/5">
-                      <p className="text-sm text-[#1F1410]/50">
-                        Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}-
-                        {Math.min(currentPage * ITEMS_PER_PAGE, filteredTransactions.length)} of {filteredTransactions.length}
-                        {selectedCategoryId && transactions.length !== filteredTransactions.length && (
-                          <span className="text-[#1F1410]/30"> ({transactions.length} total)</span>
-                        )}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                          disabled={currentPage === 1}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#1F1410]/5"
-                        >
-                          <ChevronLeft className="w-4 h-4" />
-                          Previous
-                        </button>
-                        <span className="text-sm text-[#1F1410]/60 px-2">
-                          Page {currentPage} of {totalPages}
-                        </span>
-                        <button
-                          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                          disabled={currentPage === totalPages}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#1F1410]/5"
-                        >
-                          Next
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </motion.div>
+          <CategoryProgressList
+            categories={categoriesWithTotals}
+            selectedCategoryId={selectedCategoryId}
+            onCategorySelect={setSelectedCategoryId}
+            transactions={transactions}
+            childCategoryIds={getChildCategoryIds}
+          />
         </div>
 
         {/* Footer */}
