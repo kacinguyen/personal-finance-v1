@@ -18,7 +18,7 @@ import { availableIcons, availableColors } from '../../lib/iconMap'
 import type { CategoryBudget } from '../views/BudgetView'
 import type { CategoryType } from '../../types/category'
 
-// Type config for pills and dropdown
+// Type config for pills (display) and dropdown
 const TYPE_CONFIG: {
   type: CategoryType
   label: string
@@ -31,6 +31,9 @@ const TYPE_CONFIG: {
   { type: 'savings_funded', label: 'Savings', color: '#38BDF8', icon: PiggyBank },
   { type: 'transfer', label: 'Transfer', color: '#8B5CF6', icon: ArrowLeftRight },
 ]
+
+// Only Need and Want are selectable in the type dropdown
+const SELECTABLE_TYPES = TYPE_CONFIG.filter(t => t.type === 'need' || t.type === 'want')
 
 function getTypeConfig(type: CategoryType) {
   return TYPE_CONFIG.find(t => t.type === type) ?? TYPE_CONFIG[0]
@@ -83,7 +86,7 @@ function TypePill({
             className="absolute left-0 top-full mt-1 z-50 bg-white rounded-lg overflow-hidden py-1 min-w-[130px]"
             style={{ boxShadow: '0 4px 16px rgba(31, 20, 16, 0.12)' }}
           >
-            {TYPE_CONFIG.map(({ type: t, label, color, icon: Icon }) => (
+            {SELECTABLE_TYPES.map(({ type: t, label, color, icon: Icon }) => (
               <button
                 key={t}
                 onClick={() => {

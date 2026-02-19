@@ -160,29 +160,29 @@ export function AddCategoryDropdown({ onCreateCategory }: AddCategoryDropdownPro
               <p className="text-xs font-semibold text-[#1F1410]/40 uppercase tracking-wide mt-4 mb-2">
                 Type
               </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setSelectedType('need')}
-                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                    selectedType === 'need'
-                      ? 'bg-[#10B981]/10 text-[#10B981] ring-2 ring-[#10B981]/20'
-                      : 'bg-[#1F1410]/[0.03] text-[#1F1410]/60 hover:bg-[#1F1410]/[0.06]'
-                  }`}
-                >
-                  <Shield className="w-4 h-4" />
-                  Need
-                </button>
-                <button
-                  onClick={() => setSelectedType('want')}
-                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                    selectedType === 'want'
-                      ? 'bg-[#A855F7]/10 text-[#A855F7] ring-2 ring-[#A855F7]/20'
-                      : 'bg-[#1F1410]/[0.03] text-[#1F1410]/60 hover:bg-[#1F1410]/[0.06]'
-                  }`}
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Want
-                </button>
+              <div className="flex flex-wrap gap-1.5">
+                {([
+                  { type: 'need' as CategoryType, label: 'Need', color: '#10B981', Icon: Shield },
+                  { type: 'want' as CategoryType, label: 'Want', color: '#A855F7', Icon: Sparkles },
+                ]).map(({ type, label, color, Icon }) => (
+                  <button
+                    key={type}
+                    onClick={() => setSelectedType(type)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      selectedType === type
+                        ? `ring-2`
+                        : 'bg-[#1F1410]/[0.03] text-[#1F1410]/60 hover:bg-[#1F1410]/[0.06]'
+                    }`}
+                    style={selectedType === type ? {
+                      backgroundColor: `${color}15`,
+                      color: color,
+                      boxShadow: `0 0 0 2px ${color}33`,
+                    } : undefined}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                  </button>
+                ))}
               </div>
 
               {/* Budget Amount */}
@@ -208,8 +208,8 @@ export function AddCategoryDropdown({ onCreateCategory }: AddCategoryDropdownPro
               <p className="text-xs font-semibold text-[#1F1410]/40 uppercase tracking-wide mt-4 mb-2">
                 Icon
               </p>
-              <div className="grid grid-cols-5 gap-1.5">
-                {availableIcons.slice(0, 15).map(({ icon: Icon, name }) => (
+              <div className="grid grid-cols-9 gap-1 max-h-24 overflow-y-auto">
+                {availableIcons.map(({ icon: Icon, name }) => (
                   <button
                     key={name}
                     onClick={() =>

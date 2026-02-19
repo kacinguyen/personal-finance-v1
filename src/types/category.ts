@@ -225,6 +225,15 @@ export const DEFAULT_CATEGORIES: DefaultCategoryDef[] = [
     is_active: true,
     is_budgetable: false,
   },
+  {
+    name: 'Gift',
+    icon: 'Gift',
+    color: '#EC4899',
+    category_type: 'income',
+    is_system: true,
+    is_active: true,
+    is_budgetable: false,
+  },
   // Travel (Savings-Funded)
   {
     name: 'Travel',
