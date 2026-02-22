@@ -9,7 +9,6 @@ import {
   FileText,
   Split,
   Pencil,
-  Trash2,
   CheckCircle2,
   AlertTriangle,
   GitMerge,
@@ -310,7 +309,7 @@ export function TransactionDetailPanel({
   incomeCategories,
   transferCategories,
   onEdit,
-  onDelete,
+  onDelete: _onDelete,
   onMarkAsReviewed,
   onSplit,
   onReconcile,
@@ -857,16 +856,16 @@ export function TransactionDetailPanel({
           })()}
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-4 mt-6 pt-6 border-t border-[#1F1410]/5">
-            {selectedTransaction.needs_review && (
-              <button
-                onClick={() => onMarkAsReviewed(selectedTransaction.id)}
-                className="flex items-center gap-1.5 text-sm text-[#3B82F6] hover:text-[#2563EB] transition-colors"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Mark Reviewed
-              </button>
-            )}
+          {selectedTransaction.needs_review && (
+            <button
+              onClick={() => onMarkAsReviewed(selectedTransaction.id)}
+              className="w-full mt-6 py-2.5 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-white text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              Mark Reviewed
+            </button>
+          )}
+          <div className="flex items-center gap-4 mt-4 pt-4 border-t border-[#1F1410]/5">
             <button
               onClick={onEdit}
               className="flex items-center gap-1.5 text-sm text-[#1F1410]/50 hover:text-[#1F1410] transition-colors"
@@ -894,13 +893,6 @@ export function TransactionDetailPanel({
             >
               <Split className="w-3.5 h-3.5" />
               {selectedTransaction.splits.length > 0 ? 'Edit Split' : 'Split'}
-            </button>
-            <button
-              onClick={onDelete}
-              className="flex items-center gap-1.5 text-sm text-[#1F1410]/50 hover:text-red-500 transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Delete
             </button>
           </div>
         </div>
