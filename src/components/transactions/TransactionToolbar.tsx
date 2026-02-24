@@ -7,8 +7,8 @@ import {
   Upload,
   X,
   ArrowUpDown,
+  RefreshCw,
 } from 'lucide-react'
-import { TAB_COLORS } from '../../lib/colors'
 import type { Filters, FilterType, SortOrder } from '../views/TransactionsView'
 import type { UICategory } from '../../types/category'
 
@@ -31,6 +31,8 @@ type TransactionToolbarProps = {
   allFilterTypes: { id: FilterType; label: string }[]
   sortOrder: SortOrder
   onSortChange: (order: SortOrder) => void
+  onSyncTransactions?: () => void
+  syncing?: boolean
 }
 
 export function TransactionToolbar({
@@ -52,6 +54,8 @@ export function TransactionToolbar({
   allFilterTypes,
   sortOrder,
   onSortChange,
+  onSyncTransactions,
+  syncing,
 }: TransactionToolbarProps) {
   return (
     <div className="p-3 border-b border-[#1F1410]/5">
@@ -129,6 +133,18 @@ export function TransactionToolbar({
 
         <div className="flex-1" />
 
+        {/* Sync Transactions Button */}
+        {onSyncTransactions && (
+          <button
+            onClick={onSyncTransactions}
+            disabled={syncing}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium text-[#1F1410]/60 hover:text-[#1F1410] hover:bg-[#1F1410]/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            <span>Sync</span>
+          </button>
+        )}
+
         {/* Add Button with Dropdown */}
         <div className="relative">
           <motion.button
@@ -137,8 +153,11 @@ export function TransactionToolbar({
             onClick={() => {
               setShowAddDropdown(!showAddDropdown)
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white transition-colors"
-            style={{ backgroundColor: TAB_COLORS.transactions }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              showAddDropdown
+                ? 'text-[#8B5CF6] bg-[#8B5CF6]/10'
+                : 'text-[#1F1410]/60 hover:text-[#1F1410] hover:bg-[#1F1410]/5'
+            }`}
           >
             <Plus className="w-4 h-4" />
             <span>Add</span>

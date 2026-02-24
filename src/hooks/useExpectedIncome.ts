@@ -41,12 +41,11 @@ export function useExpectedIncome(selectedMonth: Date): UseExpectedIncomeResult 
   const [currentMonthTxns, setCurrentMonthTxns] = useState<{ amount: number; category_id: string | null }[]>([])
   // Previous month salary transactions (for 0-check fallback)
   const [prevMonthSalaryTotal, setPrevMonthSalaryTotal] = useState(0)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   const fetchIncome = useCallback(async () => {
     if (incomeCategoryIds.length === 0) {
-      setCurrentMonthTxns([])
-      setPrevMonthSalaryTotal(0)
+      // Categories haven't loaded yet — keep loading: true so consumers show skeleton
       return
     }
 

@@ -10,13 +10,16 @@ import {
   PiggyBank,
   Loader2,
   BanknoteIcon,
+  ChevronDown,
+  Link2,
+  PencilLine,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useUser } from '../../hooks/useUser'
 import { SHADOWS, CARD_CLASSES } from '../../lib/styles'
 import { TAB_COLORS, withOpacity } from '../../lib/colors'
 import { AddAccountModal } from '../modals/AddAccountModal'
-import { PlaidLinkButton } from '../common/PlaidLinkButton'
+import { usePlaidLink } from '../../hooks/usePlaidLink'
 import { AccountSummaryCards } from '../accounts/AccountSummaryCards'
 import { NetWorthChart } from '../accounts/NetWorthChart'
 import { AccountGroupCard } from '../accounts/AccountGroupCard'
@@ -232,6 +235,7 @@ export function AccountsView() {
   const [editAccount, setEditAccount] = useState<Account | null>(null)
   const [plaidItems, setPlaidItems] = useState<PlaidItemPublic[]>([])
   const [syncingPlaidItemId, setSyncingPlaidItemId] = useState<string | null>(null)
+  const [showAddDropdown, setShowAddDropdown] = useState(false)
 
   // --- Data fetching ---
 
@@ -279,6 +283,14 @@ export function AccountsView() {
     }
     setPlaidItems((data ?? []) as PlaidItemPublic[])
   }, [userId])
+
+  const { openLink: openPlaidLink, loading: plaidLinkLoading, error: plaidLinkError } = usePlaidLink({
+    onSuccess: () => {
+      fetchAccounts()
+      fetchSnapshots()
+      fetchPlaidItems()
+    },
+  })
 
   const syncPlaidItem = useCallback(async (plaidItemId: string) => {
     setSyncingPlaidItemId(plaidItemId)
@@ -473,7 +485,8 @@ export function AccountsView() {
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="min-h-screen w-full bg-[#FFFBF5] py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -492,24 +505,57 @@ export function AccountsView() {
             <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
             Sync Balances
           </button>
-          <PlaidLinkButton
-            onSuccess={() => {
-              fetchAccounts()
-              fetchSnapshots()
-              fetchPlaidItems()
-            }}
-          />
-          <button
-            onClick={() => {
-              setEditAccount(null)
-              setModalOpen(true)
-            }}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white flex items-center gap-2 transition-colors"
-            style={{ backgroundColor: TAB_COLORS.accounts }}
-          >
-            <Plus className="w-4 h-4" />
-            Add Account
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowAddDropdown(!showAddDropdown)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                showAddDropdown
+                  ? 'text-[#14B8A6] bg-[#14B8A6]/10'
+                  : 'text-[#1F1410]/60 hover:text-[#1F1410] hover:bg-[#1F1410]/5'
+              }`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Account</span>
+              <ChevronDown className="w-3.5 h-3.5 ml-0.5" />
+            </button>
+
+            {showAddDropdown && (
+              <div
+                className="absolute top-full right-0 mt-2 bg-white rounded-xl border border-[#1F1410]/10 shadow-lg z-50 min-w-[180px] overflow-hidden"
+                onMouseLeave={() => setShowAddDropdown(false)}
+              >
+                <button
+                  onClick={() => {
+                    setEditAccount(null)
+                    setModalOpen(true)
+                    setShowAddDropdown(false)
+                  }}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-[#1F1410]/5 transition-colors text-[#1F1410]"
+                >
+                  <PencilLine className="w-4 h-4 text-[#1F1410]/50" />
+                  Manual Add
+                </button>
+                <button
+                  onClick={() => {
+                    openPlaidLink()
+                    setShowAddDropdown(false)
+                  }}
+                  disabled={plaidLinkLoading}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-[#1F1410]/5 transition-colors text-[#1F1410] disabled:opacity-60"
+                >
+                  {plaidLinkLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-[#1F1410]/50" />
+                  ) : (
+                    <Link2 className="w-4 h-4 text-[#1F1410]/50" />
+                  )}
+                  Connect Bank
+                </button>
+              </div>
+            )}
+            {plaidLinkError && (
+              <p className="absolute top-full right-0 mt-1 text-xs text-red-500 max-w-[200px] text-right">{plaidLinkError}</p>
+            )}
+          </div>
         </div>
       </motion.div>
 
@@ -608,6 +654,7 @@ export function AccountsView() {
         onSave={handleSave}
         editAccount={editAccount}
       />
+      </div>
     </div>
   )
 }

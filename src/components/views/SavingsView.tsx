@@ -283,7 +283,7 @@ export function SavingsView() {
               <h2 className="text-lg font-bold text-[#1F1410]">Active Goals</h2>
               <button
                 onClick={handleAddGoal}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[#38BDF8] hover:bg-[#38BDF8]/10 rounded-lg transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[#1F1410]/60 hover:text-[#1F1410] hover:bg-[#1F1410]/5 rounded-lg transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 Add Goal

@@ -51,7 +51,7 @@ export function DashboardView() {
   })
 
   // Use shared hook for expected income
-  const { expectedIncome } = useExpectedIncome(selectedMonth)
+  const { expectedIncome, loading: incomeLoading } = useExpectedIncome(selectedMonth)
   const { categories: dbCategories, findCategoryById } = useCategories()
   const { categorySummaries } = useMonthlySummary(selectedMonth)
 
@@ -313,7 +313,11 @@ export function DashboardView() {
             className={`bg-white rounded-2xl p-6 ${cardBorder}`}
           >
             <p className="text-[10px] uppercase tracking-wider text-[#1F1410]/30 mb-2">Expected Income</p>
-            <p className="text-3xl font-light text-[#1F1410]">{formatCurrency(expectedIncome)}</p>
+            {incomeLoading ? (
+              <div className="h-9 w-24 bg-[#1F1410]/5 rounded-lg animate-pulse" />
+            ) : (
+              <p className="text-3xl font-light text-[#1F1410]">{formatCurrency(expectedIncome)}</p>
+            )}
           </motion.div>
 
           {/* Remaining */}
@@ -324,9 +328,13 @@ export function DashboardView() {
             className={`bg-white rounded-2xl p-6 ${cardBorder}`}
           >
             <p className="text-[10px] uppercase tracking-wider text-[#1F1410]/30 mb-2">Remaining</p>
-            <p className="text-3xl font-light" style={{ color: STATUS_COLORS.success }}>
-              {formatCurrency(budgetTracking.remainingIncome)}
-            </p>
+            {incomeLoading ? (
+              <div className="h-9 w-24 bg-[#1F1410]/5 rounded-lg animate-pulse" />
+            ) : (
+              <p className="text-3xl font-light" style={{ color: STATUS_COLORS.success }}>
+                {formatCurrency(budgetTracking.remainingIncome)}
+              </p>
+            )}
           </motion.div>
 
           {/* Days Left */}

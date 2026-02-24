@@ -131,6 +131,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
   const [isReconcileModalOpen, setIsReconcileModalOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [accountTypeMap, setAccountTypeMap] = useState<AccountTypeMap>(new Map())
+  const [syncing, setSyncing] = useState(false)
   const [goals, setGoals] = useState<{ id: string; name: string; color: string }[]>([])
 
   // Convert DB categories to UI categories with resolved icons (all categories for filtering)
@@ -679,6 +680,36 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
     setShowAddDropdown(false)
   }, [showFiltersPanel])
 
+  const handleSyncTransactions = useCallback(async () => {
+    setSyncing(true)
+    try {
+      // Fetch active plaid items
+      const { data: plaidItems } = await supabase
+        .from('plaid_items')
+        .select('plaid_item_id, status')
+        .eq('status', 'active')
+
+      if (plaidItems && plaidItems.length > 0) {
+        await Promise.all(
+          plaidItems.map((pi) =>
+            Promise.all([
+              supabase.functions.invoke('plaid-sync-accounts', {
+                body: { plaid_item_id: pi.plaid_item_id },
+              }),
+              supabase.functions.invoke('plaid-sync-transactions', {
+                body: { plaid_item_id: pi.plaid_item_id },
+              }),
+            ])
+          )
+        )
+      }
+      await fetchTransactions()
+    } catch (err) {
+      console.error('Error syncing transactions:', err)
+    }
+    setSyncing(false)
+  }, [fetchTransactions])
+
   const handleAddNewTransaction = () => {
     setEditingTransaction(null)
     setIsAddModalOpen(true)
@@ -790,6 +821,8 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
               allFilterTypes={filterTypes}
               sortOrder={sortOrder}
               onSortChange={setSortOrder}
+              onSyncTransactions={handleSyncTransactions}
+              syncing={syncing}
             />
 
             {/* Review Status Tabs */}

@@ -85,7 +85,7 @@ export function YearlyIncomeChart({ paystubs, selectedMonth }: Props) {
   const year = selectedMonth.getFullYear()
   const lastYearVal = year - 1
 
-  const { chartData, ytdTotal, lastYearTotal } = useMemo(() => {
+  const { chartData } = useMemo(() => {
     const now = new Date()
 
     const groupByMonth = (targetYear: number) => {
@@ -188,9 +188,6 @@ export function YearlyIncomeChart({ paystubs, selectedMonth }: Props) {
   }, [paystubs, selectedMonth, activeFilters, year, lastYearVal])
 
   if (paystubs.length === 0) return null
-
-  const fmtCurrency = (v: number) =>
-    v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 
   // Ordered list of active source keys (for top-radius on the topmost bar)
   const activeSourceKeys = SOURCE_KEYS.filter(k => activeFilters.has(k))
