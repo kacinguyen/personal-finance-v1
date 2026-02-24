@@ -1,11 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
-  LayoutDashboard,
   Calendar,
-  Wallet,
-  ArrowUpRight,
-  ArrowDownRight,
   ChevronLeft,
   ChevronRight,
   TrendingUp,
@@ -24,9 +20,8 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { supabase } from '../../lib/supabase'
-import { formatCurrency, formatPercent } from '../../lib/format'
+import { formatCurrency } from '../../lib/format'
 import { STATUS_COLORS, CHART_COLORS, TAB_COLORS } from '../../lib/colors'
-import { SHADOWS } from '../../lib/styles'
 import { getMonthRange, getMonthData } from '../../lib/dateUtils'
 import { useExpectedIncome } from '../../hooks/useExpectedIncome'
 import { useCategories } from '../../hooks/useCategories'
@@ -94,7 +89,6 @@ export function DashboardView() {
     })
   }, [categorySummaries, findCategoryById])
 
-  const topCategoryMax = topCategories.length > 0 ? topCategories[0].amount : 0
 
   // Fetch upcoming RSU vest
   useEffect(() => {
@@ -280,7 +274,7 @@ export function DashboardView() {
     return null
   }
 
-  const cardStyle = { boxShadow: SHADOWS.card }
+  const cardBorder = 'border border-[#1F1410]/5'
 
   return (
     <div className="min-h-screen w-full bg-[#FFFBF5] py-8 px-4 sm:px-6 lg:px-8">
@@ -293,17 +287,7 @@ export function DashboardView() {
           className="mb-8"
         >
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-3">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
-                className="w-12 h-12 rounded-xl bg-[#F59E0B]/10 flex items-center justify-center"
-              >
-                <LayoutDashboard className="w-6 h-6" style={{ color: TAB_COLORS.dashboard }} />
-              </motion.div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Dashboard</h1>
-            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Dashboard</h1>
             <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </div>
         </motion.div>
@@ -315,15 +299,10 @@ export function DashboardView() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 0.4 }}
-            className="bg-white rounded-2xl p-6 shadow-sm"
-            style={cardStyle}
+            className={`bg-white rounded-2xl p-6 ${cardBorder}`}
           >
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-[#1F1410]/50">Total Spent</p>
-              <ArrowUpRight className="w-4 h-4" style={{ color: STATUS_COLORS.error }} />
-            </div>
-            <p className="text-3xl font-bold text-[#1F1410] mb-1">{formatCurrency(totalSpent)}</p>
-            <p className="text-xs text-[#1F1410]/40">{formatPercent(budgetTracking.percentageOfBudget)} of budget</p>
+            <p className="text-[10px] uppercase tracking-wider text-[#1F1410]/30 mb-2">Total Spent</p>
+            <p className="text-3xl font-light text-[#1F1410]">{formatCurrency(totalSpent)}</p>
           </motion.div>
 
           {/* Expected Income */}
@@ -331,15 +310,10 @@ export function DashboardView() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.4 }}
-            className="bg-white rounded-2xl p-6 shadow-sm"
-            style={cardStyle}
+            className={`bg-white rounded-2xl p-6 ${cardBorder}`}
           >
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-[#1F1410]/50">Expected Income</p>
-              <ArrowDownRight className="w-4 h-4" style={{ color: STATUS_COLORS.success }} />
-            </div>
-            <p className="text-3xl font-bold text-[#1F1410] mb-1">{formatCurrency(expectedIncome)}</p>
-            <p className="text-xs text-[#1F1410]/40">This month</p>
+            <p className="text-[10px] uppercase tracking-wider text-[#1F1410]/30 mb-2">Expected Income</p>
+            <p className="text-3xl font-light text-[#1F1410]">{formatCurrency(expectedIncome)}</p>
           </motion.div>
 
           {/* Remaining */}
@@ -347,17 +321,12 @@ export function DashboardView() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4, duration: 0.4 }}
-            className="bg-white rounded-2xl p-6 shadow-sm"
-            style={cardStyle}
+            className={`bg-white rounded-2xl p-6 ${cardBorder}`}
           >
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-[#1F1410]/50">Remaining</p>
-              <Wallet className="w-4 h-4" style={{ color: STATUS_COLORS.success }} />
-            </div>
-            <p className="text-3xl font-bold mb-1" style={{ color: STATUS_COLORS.success }}>
+            <p className="text-[10px] uppercase tracking-wider text-[#1F1410]/30 mb-2">Remaining</p>
+            <p className="text-3xl font-light" style={{ color: STATUS_COLORS.success }}>
               {formatCurrency(budgetTracking.remainingIncome)}
             </p>
-            <p className="text-xs text-[#1F1410]/40">From income</p>
           </motion.div>
 
           {/* Days Left */}
@@ -365,15 +334,10 @@ export function DashboardView() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5, duration: 0.4 }}
-            className="bg-white rounded-2xl p-6 shadow-sm"
-            style={cardStyle}
+            className={`bg-white rounded-2xl p-6 ${cardBorder}`}
           >
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-[#1F1410]/50">Days Left</p>
-              <Calendar className="w-4 h-4" style={{ color: STATUS_COLORS.warning }} />
-            </div>
-            <p className="text-3xl font-bold text-[#1F1410] mb-1">{monthData.daysRemaining}</p>
-            <p className="text-xs text-[#1F1410]/40">In {monthData.monthName}</p>
+            <p className="text-[10px] uppercase tracking-wider text-[#1F1410]/30 mb-2">Days Left</p>
+            <p className="text-3xl font-light text-[#1F1410]">{monthData.daysRemaining}</p>
           </motion.div>
         </div>
 
@@ -384,8 +348,7 @@ export function DashboardView() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6, duration: 0.4 }}
-            className="bg-white rounded-2xl p-6 shadow-sm"
-            style={cardStyle}
+            className={`bg-white rounded-2xl p-6 ${cardBorder}`}
           >
             <div className="flex items-center gap-2 mb-4">
               <BarChart3 className="w-4 h-4" style={{ color: TAB_COLORS.expenses }} />
@@ -397,7 +360,6 @@ export function DashboardView() {
               <div className="space-y-3">
                 {topCategories.map((cat) => {
                   const Icon = getIcon(cat.icon)
-                  const pct = topCategoryMax > 0 ? (cat.amount / topCategoryMax) * 100 : 0
                   return (
                     <div key={cat.id} className="flex items-center gap-3">
                       <div
@@ -406,17 +368,9 @@ export function DashboardView() {
                       >
                         <Icon className="w-3.5 h-3.5" style={{ color: cat.color }} />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-medium text-[#1F1410] truncate">{cat.name}</span>
-                          <span className="text-xs font-semibold text-[#1F1410] ml-2">{formatCurrency(cat.amount)}</span>
-                        </div>
-                        <div className="h-1.5 bg-[#1F1410]/5 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all duration-500"
-                            style={{ width: `${pct}%`, backgroundColor: cat.color }}
-                          />
-                        </div>
+                      <div className="flex-1 min-w-0 flex items-center justify-between">
+                        <span className="text-xs font-medium text-[#1F1410] truncate">{cat.name}</span>
+                        <span className="text-sm font-semibold text-[#1F1410] ml-2">{formatCurrency(cat.amount)}</span>
                       </div>
                     </div>
                   )
@@ -430,8 +384,7 @@ export function DashboardView() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.7, duration: 0.4 }}
-            className="bg-white rounded-2xl p-6 shadow-sm"
-            style={cardStyle}
+            className={`bg-white rounded-2xl p-6 ${cardBorder}`}
           >
             <div className="flex items-center gap-2 mb-4">
               <TrendingUp className="w-4 h-4" style={{ color: TAB_COLORS.accounts }} />
@@ -442,7 +395,7 @@ export function DashboardView() {
                 {nextVest.company_name && (
                   <p className="text-xs font-medium text-[#1F1410]/50">{nextVest.company_name}</p>
                 )}
-                <p className="text-2xl font-bold text-[#1F1410]">
+                <p className="text-2xl font-light text-[#1F1410]">
                   {formatCurrency(nextVest.total_gross_value)}
                 </p>
                 <div className="flex items-center justify-between text-xs text-[#1F1410]/50">
@@ -468,14 +421,13 @@ export function DashboardView() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.8, duration: 0.4 }}
-            className="bg-white rounded-2xl p-6 shadow-sm"
-            style={cardStyle}
+            className={`bg-white rounded-2xl p-6 ${cardBorder}`}
           >
             <div className="flex items-center gap-2 mb-4">
               <CircleDollarSign className="w-4 h-4" style={{ color: TAB_COLORS.budget }} />
               <h3 className="text-sm font-semibold text-[#1F1410]">Daily Spending</h3>
             </div>
-            <p className="text-2xl font-bold text-[#1F1410] mb-1">
+            <p className="text-2xl font-light text-[#1F1410] mb-1">
               {formatCurrency(spendingPerDay.avgPerDay)}
             </p>
             <p className="text-xs text-[#1F1410]/40 mb-4">per day average</p>
@@ -504,8 +456,7 @@ export function DashboardView() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1, duration: 0.4 }}
-          className="bg-white rounded-2xl p-6 shadow-sm mb-8"
-          style={cardStyle}
+          className={`bg-white rounded-2xl p-6 mb-8 ${cardBorder}`}
         >
           <div className="flex items-start justify-between mb-6">
             <div>

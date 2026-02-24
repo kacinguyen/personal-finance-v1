@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Target,
   LucideIcon,
   Loader2,
   Trash2,
@@ -701,28 +700,7 @@ export function BudgetView() {
           className="mb-8"
         >
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-3">
-              <motion.div
-                initial={{
-                  scale: 0,
-                }}
-                animate={{
-                  scale: 1,
-                }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 200,
-                  damping: 15,
-                  delay: 0.2,
-                }}
-                className="w-12 h-12 rounded-xl bg-[#6366F1]/10 flex items-center justify-center"
-              >
-                <Target className="w-6 h-6 text-[#6366F1]" />
-              </motion.div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">
-                Budget Plan
-              </h1>
-            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Budget Plan</h1>
             <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </div>
         </motion.div>

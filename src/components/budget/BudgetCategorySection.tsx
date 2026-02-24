@@ -4,7 +4,6 @@ import {
   ChevronDown,
   Shield,
   Sparkles,
-  PiggyBank,
   Trash2,
   Pencil,
   Plus,
@@ -581,74 +580,6 @@ function CategoryGroupRow({
 }
 
 // SavingsGoalRow component - displays a savings goal with monthly allocation
-function SavingsGoalRow({
-  goal,
-  index,
-  onBudgetChange,
-}: {
-  goal: SavingsGoal
-  index: number
-  onBudgetChange: (id: string, value: string) => void
-}) {
-  const Icon = goal.icon
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.05, duration: 0.3 }}
-      className="flex items-center justify-between py-2"
-    >
-      {/* Left section: Icon + Info */}
-      <div className="flex items-center gap-3 min-w-0 flex-1">
-        <motion.div
-          whileHover={{ scale: 1.1, rotate: 5 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 17 }}
-          className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ backgroundColor: `${goal.color}15` }}
-        >
-          <Icon className="w-4.5 h-4.5" style={{ color: goal.color }} />
-        </motion.div>
-        <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-[#1F1410] truncate">
-            {goal.name}
-          </h3>
-          <div className="flex items-center gap-2">
-            <p className="text-xs text-[#1F1410]/40">
-              ${goal.currentAmount.toLocaleString()} / ${goal.targetAmount.toLocaleString()}
-            </p>
-            <div className="flex-1 max-w-20 h-1.5 bg-[#1F1410]/5 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${Math.min(goal.progress, 100)}%`,
-                  backgroundColor: goal.color,
-                }}
-              />
-            </div>
-            <span className="text-[10px] text-[#1F1410]/40">
-              {Math.round(goal.progress)}%
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Right section: Monthly budget input */}
-      <div className="relative flex-shrink-0">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1F1410]/40 text-sm font-medium">
-          $
-        </span>
-        <input
-          type="text"
-          value={goal.monthlyBudget}
-          onChange={(e) => onBudgetChange(goal.id, e.target.value)}
-          className="w-28 pl-6 pr-3 py-1.5 text-right font-semibold text-[#1F1410] bg-[#1F1410]/[0.03] rounded-lg focus:bg-white focus:ring-2 focus:ring-[#38BDF8]/20 focus:outline-none transition-all text-sm"
-        />
-      </div>
-    </motion.div>
-  )
-}
-
 // --- Exported section components ---
 
 export type BudgetCategorySectionProps = {
@@ -754,33 +685,95 @@ export function SavingsGoalsSection({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: animationDelay, duration: 0.4 }}
-      className="bg-white rounded-2xl p-5 shadow-sm"
-      style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+      className="bg-white rounded-2xl overflow-hidden border border-[#1F1410]/5"
     >
-      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-[#1F1410]/5">
-        <div className="w-8 h-8 rounded-lg bg-[#38BDF8]/10 flex items-center justify-center">
-          <PiggyBank className="w-4 h-4 text-[#38BDF8]" />
-        </div>
-        <h3 className="font-semibold text-[#1F1410]">Savings Goals</h3>
-        <span className="text-xs text-[#1F1410]/40 ml-auto">
-          {savingsGoals.length} goals
-        </span>
+      {/* Table header — 24px spacer matches drag-handle column in categories table */}
+      <div className="grid grid-cols-[24px_32px_1fr_120px_100px_100px] gap-2 px-4 py-3 border-b border-[#1F1410]/5 text-[10px] font-semibold text-[#1F1410]/40 uppercase tracking-wide">
+        <div />
+        <div />
+        <div>Goal</div>
+        <div>Progress</div>
+        <div className="text-right">Deadline</div>
+        <div className="text-right">Monthly</div>
       </div>
-      <div className="space-y-1 divide-y divide-[#1F1410]/5">
-        {savingsGoals.map((goal, index) => (
-          <SavingsGoalRow
-            key={goal.id}
-            goal={goal}
-            index={index}
-            onBudgetChange={onBudgetChange}
-          />
-        ))}
-        {savingsGoals.length === 0 && (
-          <p className="text-sm text-[#1F1410]/40 py-4 text-center">
-            No savings goals yet. Create one on the Savings page.
-          </p>
-        )}
+
+      {/* Table rows */}
+      <div className="divide-y divide-[#1F1410]/5">
+        {savingsGoals.map((goal, index) => {
+          const Icon = goal.icon
+          const deadlineStr = goal.deadline
+            ? goal.deadline.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+            : '—'
+
+          return (
+            <motion.div
+              key={goal.id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: index * 0.03, duration: 0.2 }}
+              className="group grid grid-cols-[24px_32px_1fr_120px_100px_100px] gap-2 px-4 py-2 items-center hover:bg-[#1F1410]/[0.015] transition-colors"
+            >
+              {/* Spacer (matches drag handle column) */}
+              <div />
+              {/* Icon */}
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: `${goal.color}15` }}
+              >
+                <Icon className="w-4 h-4" style={{ color: goal.color }} />
+              </div>
+
+              {/* Name + current/target */}
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[#1F1410] truncate">{goal.name}</p>
+                <p className="text-xs text-[#1F1410]/40">
+                  ${goal.currentAmount.toLocaleString()} of ${goal.targetAmount.toLocaleString()}
+                </p>
+              </div>
+
+              {/* Progress */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-[#1F1410]/60">
+                  {Math.round(goal.progress)}%
+                </span>
+                <div className="flex-1 h-1.5 bg-[#1F1410]/5 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(goal.progress, 100)}%`,
+                      backgroundColor: goal.color,
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Deadline */}
+              <div className="text-right text-xs text-[#1F1410]/40 font-medium">
+                {deadlineStr}
+              </div>
+
+              {/* Monthly budget input */}
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1F1410]/40 text-sm font-medium">
+                  $
+                </span>
+                <input
+                  type="text"
+                  value={goal.monthlyBudget}
+                  onChange={(e) => onBudgetChange(goal.id, e.target.value)}
+                  className="w-full pl-6 pr-2 py-1 text-right font-semibold text-[#1F1410] bg-[#1F1410]/[0.03] rounded-lg focus:bg-white focus:ring-2 focus:ring-[#38BDF8]/20 focus:outline-none transition-all text-sm"
+                />
+              </div>
+            </motion.div>
+          )
+        })}
       </div>
+
+      {savingsGoals.length === 0 && (
+        <p className="text-sm text-[#1F1410]/40 py-8 text-center">
+          No savings goals yet. Create one on the Savings page.
+        </p>
+      )}
     </motion.div>
   )
 }

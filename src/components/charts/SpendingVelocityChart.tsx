@@ -112,8 +112,7 @@ export function SpendingVelocityChart({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.25 }}
-      className="mb-8 bg-white rounded-2xl p-6 shadow-sm"
-      style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+      className="mb-8 bg-white rounded-2xl p-6 border border-[#1F1410]/5"
     >
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-[#1F1410]/70">Spending Velocity</h3>

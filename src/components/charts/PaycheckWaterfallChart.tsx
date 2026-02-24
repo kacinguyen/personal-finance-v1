@@ -146,8 +146,7 @@ export function PaycheckWaterfallChart({ paystubs }: Props) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.35, duration: 0.4 }}
-      className="bg-white rounded-2xl p-6 shadow-sm"
-      style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+      className="bg-white rounded-2xl p-6 border border-[#1F1410]/5"
     >
       <h3 className="text-sm font-semibold text-[#1F1410]/70 mb-4">Paycheck Breakdown</h3>
 

@@ -9,7 +9,6 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { RefreshCw } from 'lucide-react'
-import { SHADOWS } from '../../lib/styles'
 import { TAB_COLORS } from '../../lib/colors'
 import type { NetWorthDataPoint } from '../../types/account'
 import { TIME_RANGES, type TimeRange, ChartTooltip, formatCurrency } from '../views/AccountsView'
@@ -30,8 +29,7 @@ export function NetWorthChart({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.15 }}
-      className="bg-white rounded-2xl p-6 mb-8"
-      style={{ boxShadow: SHADOWS.card }}
+      className="bg-white rounded-2xl p-6 mb-8 border border-[#1F1410]/5"
     >
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-[#1F1410]">Net Worth</h2>

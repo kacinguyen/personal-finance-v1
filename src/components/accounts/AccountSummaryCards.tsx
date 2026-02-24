@@ -1,5 +1,4 @@
 import { motion } from 'framer-motion'
-import { SHADOWS } from '../../lib/styles'
 import { TAB_COLORS, ACCOUNT_GROUP_COLORS } from '../../lib/colors'
 import type { Account, AccountGroup } from '../../types/account'
 import { ACCOUNT_GROUP_LABELS, isAssetType } from '../../types/account'
@@ -27,12 +26,11 @@ export function AccountSummaryCards({
     >
       {/* Left: Net Worth + Assets/Liabilities totals */}
       <div
-        className="bg-white rounded-2xl p-6"
-        style={{ boxShadow: SHADOWS.card }}
+        className="bg-white rounded-2xl p-6 border border-[#1F1410]/5"
       >
         <p className="text-sm font-medium text-[#1F1410]/50 mb-1">Net Worth</p>
         <p
-          className="text-3xl font-bold mb-4"
+          className="text-3xl font-light mb-4"
           style={{ color: TAB_COLORS.accounts }}
         >
           {formatCurrency(netWorth)}
@@ -56,8 +54,7 @@ export function AccountSummaryCards({
 
       {/* Right: Breakdown split by Assets / Liabilities */}
       <div
-        className="bg-white rounded-2xl p-6"
-        style={{ boxShadow: SHADOWS.card }}
+        className="bg-white rounded-2xl p-6 border border-[#1F1410]/5"
       >
         {/* Assets section */}
         <div className="mb-5">

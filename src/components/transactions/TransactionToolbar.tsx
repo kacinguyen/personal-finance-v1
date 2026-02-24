@@ -6,9 +6,10 @@ import {
   ChevronDown,
   Upload,
   X,
+  ArrowUpDown,
 } from 'lucide-react'
 import { TAB_COLORS } from '../../lib/colors'
-import type { Filters, FilterType } from '../views/TransactionsView'
+import type { Filters, FilterType, SortOrder } from '../views/TransactionsView'
 import type { UICategory } from '../../types/category'
 
 type TransactionToolbarProps = {
@@ -28,6 +29,8 @@ type TransactionToolbarProps = {
   fileInputRef: React.RefObject<HTMLInputElement>
   selectedCategory: UICategory | null
   allFilterTypes: { id: FilterType; label: string }[]
+  sortOrder: SortOrder
+  onSortChange: (order: SortOrder) => void
 }
 
 export function TransactionToolbar({
@@ -47,6 +50,8 @@ export function TransactionToolbar({
   fileInputRef,
   selectedCategory,
   allFilterTypes,
+  sortOrder,
+  onSortChange,
 }: TransactionToolbarProps) {
   return (
     <div className="p-3 border-b border-[#1F1410]/5">
@@ -93,6 +98,15 @@ export function TransactionToolbar({
             <Search className="w-4 h-4" />
           </button>
         )}
+
+        {/* Sort Button */}
+        <button
+          onClick={() => onSortChange(sortOrder === 'newest' ? 'oldest' : 'newest')}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#1F1410]/10 text-sm font-medium text-[#1F1410]/60 hover:border-[#1F1410]/20 hover:text-[#1F1410] transition-colors"
+        >
+          <ArrowUpDown className="w-3.5 h-3.5" />
+          <span>{sortOrder === 'newest' ? 'Newest' : 'Oldest'}</span>
+        </button>
 
         {/* Filter Button */}
         <button

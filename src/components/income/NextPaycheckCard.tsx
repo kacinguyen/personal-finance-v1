@@ -114,8 +114,7 @@ export function NextPaycheckCard({ paystubs, onUploadClick, loading }: NextPaych
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.25, duration: 0.4 }}
-      className="bg-white rounded-2xl p-5 shadow-sm"
-      style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+      className="bg-white rounded-2xl p-5 border border-[#1F1410]/5"
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -143,7 +142,7 @@ export function NextPaycheckCard({ paystubs, onUploadClick, loading }: NextPaych
       <div className="mt-4 flex items-end justify-between">
         <div>
           <p className="text-xs text-[#1F1410]/40 mb-0.5">Projected Net Pay</p>
-          <p className="text-2xl font-bold text-[#1F1410]">{formattedAmount}</p>
+          <p className="text-2xl font-light text-[#1F1410]">{formattedAmount}</p>
         </div>
 
         {isPayday && (

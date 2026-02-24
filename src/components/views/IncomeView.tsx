@@ -1,8 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import {
-  TrendingUp,
-} from 'lucide-react'
 import { type ImportResult } from '../../lib/paystubImport'
 import { PaystubReviewModal } from '../modals/PaystubReviewModal'
 import { supabase } from '../../lib/supabase'
@@ -390,17 +387,7 @@ export function IncomeView() {
           className="mb-8"
         >
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-3">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
-                className="w-12 h-12 rounded-xl bg-[#10B981]/10 flex items-center justify-center"
-              >
-                <TrendingUp className="w-6 h-6 text-[#10B981]" />
-              </motion.div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Income</h1>
-            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Income</h1>
             <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </div>
         </motion.div>
@@ -416,8 +403,7 @@ export function IncomeView() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, duration: 0.4 }}
-              className="bg-white rounded-2xl shadow-sm overflow-hidden"
-              style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+              className="bg-white rounded-2xl overflow-hidden border border-[#1F1410]/5"
             >
               {/* Tab bar */}
               <div className="flex border-b border-[#1F1410]/5">
@@ -435,7 +421,7 @@ export function IncomeView() {
                     {activeIncomeTab === tab.id && (
                       <motion.div
                         layoutId="income-tab-indicator"
-                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#10B981]"
+                        className="absolute bottom-0 left-2 right-2 h-0.5 bg-[#10B981] rounded-full"
                         transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                       />
                     )}

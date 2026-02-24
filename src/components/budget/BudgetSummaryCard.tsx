@@ -39,17 +39,14 @@ export function BudgetSummaryCard({
         delay: 0.2,
         duration: 0.4,
       }}
-      className="bg-white rounded-2xl p-6 shadow-sm mb-8"
-      style={{
-        boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)',
-      }}
+      className="bg-white rounded-2xl p-6 mb-8 border border-[#1F1410]/5"
     >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="flex flex-col">
           <span className="text-sm font-medium text-[#1F1410]/50 mb-1">
             Total Budget
           </span>
-          <span className="text-3xl font-bold text-[#1F1410]">
+          <span className="text-3xl font-light text-[#1F1410]">
             ${totalBudget.toLocaleString()}
           </span>
         </div>
@@ -57,7 +54,7 @@ export function BudgetSummaryCard({
           <span className="text-sm font-medium text-[#1F1410]/50 mb-1">
             Expected Income
           </span>
-          <span className="text-3xl font-bold text-[#1F1410]">
+          <span className="text-3xl font-light text-[#1F1410]">
             ${expectedIncome.toLocaleString()}
           </span>
         </div>
@@ -71,7 +68,7 @@ export function BudgetSummaryCard({
           </span>
           <div className="flex items-center gap-2">
             <span
-              className={`text-2xl font-bold ${isOverBudget ? 'text-[#FF6B6B]' : 'text-[#10B981]'}`}
+              className={`text-2xl font-light ${isOverBudget ? 'text-[#FF6B6B]' : 'text-[#10B981]'}`}
             >
               {isOverBudget ? '-' : ''}$
               {Math.abs(remainingToAllocate).toLocaleString()}
@@ -94,11 +91,8 @@ export function BudgetSummaryCard({
                 Needs
               </span>
             </div>
-            <p className="text-xl font-bold text-[#1F1410]">
+            <p className="text-xl font-light text-[#1F1410]">
               ${needsBudget.toLocaleString()}
-            </p>
-            <p className="text-[10px] text-[#1F1410]/40 mt-0.5">
-              {expectedIncome > 0 ? Math.round((needsBudget / expectedIncome) * 100) : 0}% of income
             </p>
           </div>
 
@@ -110,11 +104,8 @@ export function BudgetSummaryCard({
                 Wants
               </span>
             </div>
-            <p className="text-xl font-bold text-[#1F1410]">
+            <p className="text-xl font-light text-[#1F1410]">
               ${wantsBudget.toLocaleString()}
-            </p>
-            <p className="text-[10px] text-[#1F1410]/40 mt-0.5">
-              {expectedIncome > 0 ? Math.round((wantsBudget / expectedIncome) * 100) : 0}% of income
             </p>
           </div>
 
@@ -126,11 +117,8 @@ export function BudgetSummaryCard({
                 Savings
               </span>
             </div>
-            <p className="text-xl font-bold text-[#1F1410]">
+            <p className="text-xl font-light text-[#1F1410]">
               ${savingsBudget.toLocaleString()}
-            </p>
-            <p className="text-[10px] text-[#1F1410]/40 mt-0.5">
-              {expectedIncome > 0 ? Math.round((savingsBudget / expectedIncome) * 100) : 0}% of income
             </p>
           </div>
         </div>

@@ -68,7 +68,7 @@ export function IncomeSummaryTab({
         <div className="flex-1 min-w-[140px] p-4 rounded-xl bg-[#10B981]/5 border border-[#10B981]/10">
           <p className="text-xs font-medium text-[#1F1410]/40 mb-1">Total Expected</p>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-[#10B981]">
+            <span className="text-2xl font-light text-[#10B981]">
               {fmtCurrency(totalExpectedIncome)}
             </span>
             {incomeChangePercentage !== 0 && (
@@ -94,7 +94,7 @@ export function IncomeSummaryTab({
         {/* Salary */}
         <div className="flex-1 min-w-[120px] p-4 rounded-xl bg-[#1F1410]/[0.02] border border-[#1F1410]/5">
           <p className="text-xs font-medium text-[#1F1410]/40 mb-1">Salary</p>
-          <span className="text-lg font-bold text-[#1F1410]">
+          <span className="text-lg font-light text-[#1F1410]">
             {fmtCurrency(expectedSalaryIncome)}
           </span>
         </div>
@@ -102,7 +102,7 @@ export function IncomeSummaryTab({
         {/* Other Income */}
         <div className="flex-1 min-w-[120px] p-4 rounded-xl bg-[#1F1410]/[0.02] border border-[#1F1410]/5">
           <p className="text-xs font-medium text-[#1F1410]/40 mb-1">Other Income</p>
-          <span className="text-lg font-bold text-[#1F1410]">
+          <span className="text-lg font-light text-[#1F1410]">
             {fmtCurrency(otherIncomeTotal)}
           </span>
         </div>

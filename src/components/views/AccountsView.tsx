@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
-  Landmark,
   Plus,
   RefreshCw,
   Wallet,
@@ -482,20 +481,7 @@ export function AccountsView() {
         transition={{ duration: 0.4 }}
         className="flex items-center justify-between mb-8"
       >
-        <div className="flex items-center gap-3">
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center"
-            style={{ backgroundColor: withOpacity(TAB_COLORS.accounts, 0.1) }}
-          >
-            <Landmark className="w-6 h-6" style={{ color: TAB_COLORS.accounts }} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-[#1F1410]">Accounts</h1>
-            <p className="text-sm text-[#1F1410]/50">
-              {activeAccounts.length} account{activeAccounts.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-        </div>
+        <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Accounts</h1>
 
         <div className="flex items-center gap-2">
           <button
@@ -533,8 +519,8 @@ export function AccountsView() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className={CARD_CLASSES}
-          style={{ boxShadow: SHADOWS.card }}
+          className={`${CARD_CLASSES} border border-[#1F1410]/5`}
+          style={{}}
         >
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div

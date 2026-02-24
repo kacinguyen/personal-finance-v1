@@ -200,23 +200,14 @@ export function YearlyIncomeChart({ paystubs, selectedMonth }: Props) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3, duration: 0.4 }}
-      className="bg-white rounded-2xl p-6 shadow-sm mb-6"
-      style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+      className="bg-white rounded-2xl p-6 mb-6 border border-[#1F1410]/5"
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-1">
         <div>
-          <h3 className="text-sm font-semibold text-[#1F1410]/70 mb-1">
+          <h3 className="text-sm font-semibold text-[#1F1410]/70">
             {year} Income
           </h3>
-          <div className="flex items-baseline gap-3">
-            <p className="text-2xl font-bold text-[#1F1410]">{fmtCurrency(ytdTotal)}</p>
-            {lastYearTotal > 0 && (
-              <p className="text-sm text-[#1F1410]/40">
-                vs {fmtCurrency(lastYearTotal)} last year
-              </p>
-            )}
-          </div>
         </div>
 
         {/* Legend */}

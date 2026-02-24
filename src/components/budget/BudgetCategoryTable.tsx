@@ -640,8 +640,7 @@ export function BudgetCategoryTable({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3, duration: 0.4 }}
-      className="bg-white rounded-2xl shadow-sm overflow-hidden"
-      style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+      className="bg-white rounded-2xl overflow-hidden border border-[#1F1410]/5"
     >
       {/* Table header */}
       <div className="grid grid-cols-[24px_32px_1fr_1fr_80px_80px_100px_56px] gap-2 px-4 py-3 border-b border-[#1F1410]/5 text-[10px] font-semibold text-[#1F1410]/40 uppercase tracking-wide">

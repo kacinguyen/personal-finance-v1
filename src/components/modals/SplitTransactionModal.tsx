@@ -1,8 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Plus, Trash2, DollarSign, AlertCircle } from 'lucide-react'
+import { X, Plus, Trash2, DollarSign, AlertCircle, Tag, ChevronDown } from 'lucide-react'
 import type { UICategory } from '../../types/category'
 import type { UISplit } from '../../types/transactionSplit'
+
+type CategoryGroup = {
+  parent: UICategory
+  children: UICategory[]
+}
 
 type SplitTransactionModalProps = {
   isOpen: boolean
@@ -47,6 +52,26 @@ export function SplitTransactionModal({
   }, [splits])
 
   const remaining = absoluteAmount - totalAllocated
+
+  // Organize categories into hierarchical groups (matches AddTransactionModal)
+  const categoryGroups = useMemo((): CategoryGroup[] => {
+    const parents = categories.filter(c => !c.parent_id)
+    const children = categories.filter(c => c.parent_id)
+    const childMap = new Map<string, UICategory[]>()
+    children.forEach(child => {
+      if (child.parent_id) {
+        const existing = childMap.get(child.parent_id) || []
+        existing.push(child)
+        childMap.set(child.parent_id, existing)
+      }
+    })
+    return parents.map(parent => ({
+      parent,
+      children: childMap.get(parent.id) || [],
+    }))
+  }, [categories])
+
+  const [openDropdownIndex, setOpenDropdownIndex] = useState<number | null>(null)
   const isBalanced = Math.abs(remaining) < 0.01
 
   const handleAddSplit = () => {
@@ -196,22 +221,111 @@ export function SplitTransactionModal({
                         </div>
 
                         {/* Category Select */}
-                        <div>
+                        <div className="relative">
                           <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-1">
                             Category
                           </label>
-                          <select
-                            value={split.category_id || ''}
-                            onChange={(e) => handleSplitChange(index, 'category_id', e.target.value || null)}
-                            className="w-full px-3 py-2 rounded-lg border border-[#1F1410]/10 text-sm focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/20 focus:border-[#8B5CF6]/30 transition-all bg-white"
+                          <button
+                            type="button"
+                            onClick={() => setOpenDropdownIndex(openDropdownIndex === index ? null : index)}
+                            className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-[#1F1410]/10 text-sm bg-white hover:border-[#1F1410]/20 transition-all"
                           >
-                            <option value="">Select category...</option>
-                            {categories.map((cat) => (
-                              <option key={cat.id} value={cat.id}>
-                                {cat.name}
-                              </option>
-                            ))}
-                          </select>
+                            {split.category_id ? (
+                              (() => {
+                                const cat = categories.find(c => c.id === split.category_id)
+                                if (!cat) return <span className="text-[#1F1410]/50">Select category...</span>
+                                return (
+                                  <span className="flex items-center gap-2">
+                                    <span
+                                      className="w-5 h-5 rounded-md flex items-center justify-center"
+                                      style={{ backgroundColor: `${cat.color}15` }}
+                                    >
+                                      <cat.icon className="w-3 h-3" style={{ color: cat.color }} />
+                                    </span>
+                                    <span className="text-[#1F1410]">{cat.name}</span>
+                                  </span>
+                                )
+                              })()
+                            ) : (
+                              <span className="text-[#1F1410]/50">Select category...</span>
+                            )}
+                            <ChevronDown className="w-4 h-4 text-[#1F1410]/30" />
+                          </button>
+
+                          <AnimatePresence>
+                            {openDropdownIndex === index && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -8 }}
+                                transition={{ duration: 0.15 }}
+                                className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-[#1F1410]/10 shadow-xl max-h-48 overflow-y-auto z-50"
+                              >
+                                {/* No category option */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleSplitChange(index, 'category_id', null)
+                                    setOpenDropdownIndex(null)
+                                  }}
+                                  className="w-full flex items-center gap-3 px-4 py-2 hover:bg-[#1F1410]/5 transition-colors text-left border-b border-[#1F1410]/5"
+                                >
+                                  <div className="w-5 h-5 rounded-md bg-[#1F1410]/5 flex items-center justify-center">
+                                    <Tag className="w-3 h-3 text-[#1F1410]/30" />
+                                  </div>
+                                  <span className="text-sm text-[#1F1410]/50">No category</span>
+                                </button>
+
+                                {categoryGroups.map((group) => (
+                                  <div key={group.parent.id}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        handleSplitChange(index, 'category_id', group.parent.id)
+                                        setOpenDropdownIndex(null)
+                                      }}
+                                      className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#1F1410]/5 transition-colors text-left"
+                                    >
+                                      <div
+                                        className="w-5 h-5 rounded-md flex items-center justify-center"
+                                        style={{ backgroundColor: `${group.parent.color}15` }}
+                                      >
+                                        <group.parent.icon
+                                          className="w-3 h-3"
+                                          style={{ color: group.parent.color }}
+                                        />
+                                      </div>
+                                      <span className="text-xs font-semibold text-[#1F1410]/70 uppercase tracking-wide">
+                                        {group.parent.name}
+                                      </span>
+                                    </button>
+                                    {group.children.map((child) => (
+                                      <button
+                                        key={child.id}
+                                        type="button"
+                                        onClick={() => {
+                                          handleSplitChange(index, 'category_id', child.id)
+                                          setOpenDropdownIndex(null)
+                                        }}
+                                        className="w-full flex items-center gap-2 pl-7 pr-3 py-1.5 hover:bg-[#1F1410]/5 transition-colors text-left"
+                                      >
+                                        <div
+                                          className="w-5 h-5 rounded-md flex items-center justify-center"
+                                          style={{ backgroundColor: `${child.color}15` }}
+                                        >
+                                          <child.icon
+                                            className="w-3 h-3"
+                                            style={{ color: child.color }}
+                                          />
+                                        </div>
+                                        <span className="text-sm text-[#1F1410]">{child.name}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                ))}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
 
                         {/* Notes Input */}

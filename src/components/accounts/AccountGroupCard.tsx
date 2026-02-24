@@ -8,7 +8,6 @@ import {
   Trash2,
   AlertTriangle,
 } from 'lucide-react'
-import { SHADOWS } from '../../lib/styles'
 import { ACCOUNT_GROUP_COLORS, withOpacity } from '../../lib/colors'
 import type { Account, AccountGroup } from '../../types/account'
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_GROUP_LABELS } from '../../types/account'
@@ -62,8 +61,7 @@ export function AccountGroupCard({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2 + groupIndex * 0.05 }}
-      className="bg-white rounded-2xl overflow-hidden"
-      style={{ boxShadow: SHADOWS.card }}
+      className="bg-white rounded-2xl overflow-hidden border border-[#1F1410]/5"
     >
       {/* Group Header */}
       <button

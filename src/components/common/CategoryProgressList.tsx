@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LucideIcon, ChevronDown, X, CreditCard } from 'lucide-react'
+import { LucideIcon, ChevronDown, X } from 'lucide-react'
 
 type CategoryWithBudget = {
   id: string
@@ -13,24 +13,10 @@ type CategoryWithBudget = {
   parent_id?: string | null
 }
 
-export type InlineTransaction = {
-  id: string
-  icon: LucideIcon
-  merchant: string
-  category: string
-  category_id: string | null
-  date: string
-  amount: number
-  color: string
-  source: string
-}
-
 type CategoryProgressListProps = {
   categories: CategoryWithBudget[]
   selectedCategoryId?: string | null
   onCategorySelect?: (categoryId: string | null) => void
-  transactions?: InlineTransaction[]
-  childCategoryIds?: (parentId: string) => string[]
 }
 
 type ParentGroup = {
@@ -44,27 +30,12 @@ type CategoryGroupProps = {
   defaultExpanded?: boolean
   selectedCategoryId?: string | null
   onCategorySelect?: (categoryId: string | null) => void
-  transactions?: InlineTransaction[]
-  childCategoryIds?: (parentId: string) => string[]
 }
 
-function CategoryGroup({ parent, children, defaultExpanded = true, selectedCategoryId, onCategorySelect, transactions, childCategoryIds }: CategoryGroupProps) {
+function CategoryGroup({ parent, children, defaultExpanded = true, selectedCategoryId, onCategorySelect }: CategoryGroupProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
 
   const isParentSelected = selectedCategoryId === parent.id
-
-  // Get transactions for the parent (includes all children)
-  const parentTransactions = useMemo(() => {
-    if (!isParentSelected || !transactions) return []
-    const allIds = [parent.id, ...(childCategoryIds?.(parent.id) ?? [])]
-    return transactions.filter(t => t.category_id && allIds.includes(t.category_id))
-  }, [isParentSelected, transactions, parent.id, childCategoryIds])
-
-  // Get transactions for a specific child category
-  const getChildTransactions = (childId: string) => {
-    if (selectedCategoryId !== childId || !transactions) return []
-    return transactions.filter(t => t.category_id === childId)
-  }
 
   // Filter children to only those with activity (for consistent counting and rendering)
   const activeChildren = useMemo(() =>
@@ -103,6 +74,7 @@ function CategoryGroup({ parent, children, defaultExpanded = true, selectedCateg
       {/* Group Header - Parent Category */}
       <div
         className="w-full flex items-center justify-between p-3 rounded-xl transition-all"
+        style={isParentSelected ? { backgroundColor: `${parent.color}08`, boxShadow: `inset 0 0 0 2px ${parent.color}40` } : undefined}
       >
         {/* Left side: Icon + Name - clickable for filtering */}
         <div
@@ -163,33 +135,7 @@ function CategoryGroup({ parent, children, defaultExpanded = true, selectedCateg
         </div>
       </div>
 
-      {/* Group Progress Bar */}
-      {groupBudget > 0 && (
-        <div className="h-1.5 bg-[#1F1410]/5 rounded-full overflow-hidden mx-3 mb-2">
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${Math.min(groupPercentage, 100)}%` }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
-            className="h-full rounded-full"
-            style={{ backgroundColor: isOverBudget ? '#FF6B6B' : parent.color }}
-          />
-        </div>
-      )}
-
-      {/* Inline transactions for parent-level selection */}
-      <AnimatePresence initial={false}>
-        {isParentSelected && parentTransactions.length > 0 && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
-            className="overflow-hidden"
-          >
-            <InlineTransactionList transactions={parentTransactions} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Group remaining amount */}
 
       {/* Child Categories List */}
       <AnimatePresence initial={false}>
@@ -225,7 +171,10 @@ function CategoryGroup({ parent, children, defaultExpanded = true, selectedCateg
                         onCategorySelect(isSelected ? null : category.id)
                       }
                     }}
-                    className="group cursor-pointer p-2 -mx-2 rounded-lg transition-all hover:bg-[#1F1410]/3"
+                    className={`group cursor-pointer p-2 -mx-2 rounded-lg transition-all ${
+                      isSelected ? '' : 'hover:bg-[#1F1410]/3'
+                    }`}
+                    style={isSelected ? { backgroundColor: `${category.color}08`, boxShadow: `inset 0 0 0 2px ${category.color}40` } : undefined}
                   >
                     <div className="flex items-center justify-between mb-1.5">
                       {/* Left section: Icon + Category info */}
@@ -281,49 +230,7 @@ function CategoryGroup({ parent, children, defaultExpanded = true, selectedCateg
                       </div>
                     </div>
 
-                    {/* Progress bar */}
-                    <div className="h-1.5 bg-[#1F1410]/5 rounded-full overflow-hidden relative">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.min(percentage, 100)}%` }}
-                        transition={{ duration: 0.6, delay: 0.1 + index * 0.03, ease: 'easeOut' }}
-                        className="h-full rounded-full relative"
-                        style={{ backgroundColor: displayColor }}
-                      >
-                        {/* Shine effect */}
-                        <motion.div
-                          initial={{ x: '-100%' }}
-                          animate={{ x: '200%' }}
-                          transition={{
-                            duration: 1.5,
-                            delay: 0.6 + index * 0.03,
-                            ease: 'easeInOut',
-                          }}
-                          className="absolute inset-0 w-1/2"
-                          style={{
-                            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
-                          }}
-                        />
-                      </motion.div>
-                    </div>
 
-                    {/* Inline transactions for child selection */}
-                    <AnimatePresence initial={false}>
-                      {isSelected && (() => {
-                        const childTxs = getChildTransactions(category.id)
-                        return childTxs.length > 0 ? (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2, ease: 'easeInOut' }}
-                            className="overflow-hidden"
-                          >
-                            <InlineTransactionList transactions={childTxs} />
-                          </motion.div>
-                        ) : null
-                      })()}
-                    </AnimatePresence>
                   </motion.div>
                 )
               })}
@@ -335,47 +242,7 @@ function CategoryGroup({ parent, children, defaultExpanded = true, selectedCateg
   )
 }
 
-function InlineTransactionList({ transactions }: { transactions: InlineTransaction[] }) {
-  return (
-    <div className="mt-2 mb-1 mx-1 rounded-xl bg-[#1F1410]/[0.02] border border-[#1F1410]/5 divide-y divide-[#1F1410]/5 overflow-hidden">
-      {transactions.map((tx, i) => {
-        const TxIcon = tx.icon
-        return (
-          <motion.div
-            key={tx.id}
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.03, duration: 0.2 }}
-            className="flex items-center gap-3 px-3 py-2.5"
-          >
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ backgroundColor: tx.color }}
-            >
-              <TxIcon className="w-4 h-4 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[#1F1410] truncate">{tx.merchant}</p>
-              <div className="flex items-center gap-1.5 text-xs text-[#1F1410]/40">
-                <span>{tx.date}</span>
-                <span>·</span>
-                <div className="flex items-center gap-0.5">
-                  <CreditCard className="w-3 h-3" />
-                  <span>{tx.source}</span>
-                </div>
-              </div>
-            </div>
-            <span className="text-sm font-semibold text-[#1F1410] flex-shrink-0">
-              -${tx.amount.toFixed(2)}
-            </span>
-          </motion.div>
-        )
-      })}
-    </div>
-  )
-}
-
-export function CategoryProgressList({ categories, selectedCategoryId, onCategorySelect, transactions, childCategoryIds }: CategoryProgressListProps) {
+export function CategoryProgressList({ categories, selectedCategoryId, onCategorySelect }: CategoryProgressListProps) {
   // Organize categories into parent-child hierarchy
   const parentGroups = useMemo((): ParentGroup[] => {
     // Separate parents (no parent_id) and children (has parent_id)
@@ -411,8 +278,7 @@ export function CategoryProgressList({ categories, selectedCategoryId, onCategor
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.3 }}
-      className="bg-white rounded-2xl p-5 shadow-sm"
-      style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+      className="bg-white rounded-2xl p-5 border border-[#1F1410]/5"
     >
       {/* Clear Filter Button */}
       {selectedCategoryId && onCategorySelect && (
@@ -438,8 +304,6 @@ export function CategoryProgressList({ categories, selectedCategoryId, onCategor
             defaultExpanded={true}
             selectedCategoryId={selectedCategoryId}
             onCategorySelect={onCategorySelect}
-            transactions={transactions}
-            childCategoryIds={childCategoryIds}
           />
         ))
       )}
