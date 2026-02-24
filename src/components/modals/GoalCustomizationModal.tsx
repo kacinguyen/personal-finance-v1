@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
-  Calendar,
   DollarSign,
   Target,
   PiggyBank,
   Zap,
   Tag,
+  Calendar,
 } from 'lucide-react'
+import { DatePicker } from '../ui/DatePicker'
 
 // Paystub fields that can be linked to auto-contributions
 const PAYSTUB_CONTRIBUTION_FIELDS = [
@@ -283,12 +284,11 @@ export function GoalCustomizationModal({ isOpen, editingGoal, onClose, onSave }:
                     <Calendar className="w-4 h-4" />
                     Target Date
                   </label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={targetDate}
-                    onChange={(e) => setTargetDate(e.target.value)}
+                    onChange={setTargetDate}
                     min={new Date().toISOString().split('T')[0]}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-[#1F1410]/10 focus:border-[#1F1410]/20 focus:outline-none focus:ring-4 focus:ring-[#1F1410]/5 transition-all text-[#1F1410]"
+                    placeholder="Select target date"
                   />
                 </div>
 

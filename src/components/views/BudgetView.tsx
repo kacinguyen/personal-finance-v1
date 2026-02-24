@@ -700,7 +700,7 @@ export function BudgetView() {
           className="mb-8"
         >
           <div className="flex items-center justify-between mb-2">
-            <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Budget Plan</h1>
+            <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Budget</h1>
             <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </div>
         </motion.div>

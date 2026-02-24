@@ -687,14 +687,16 @@ export function SavingsGoalsSection({
       transition={{ delay: animationDelay, duration: 0.4 }}
       className="bg-white rounded-2xl overflow-hidden border border-[#1F1410]/5"
     >
-      {/* Table header — 24px spacer matches drag-handle column in categories table */}
-      <div className="grid grid-cols-[24px_32px_1fr_120px_100px_100px] gap-2 px-4 py-3 border-b border-[#1F1410]/5 text-[10px] font-semibold text-[#1F1410]/40 uppercase tracking-wide">
+      {/* Table header — matches category table grid: [24px_32px_1fr_1fr_80px_80px_100px_56px] */}
+      <div className="grid grid-cols-[24px_32px_1fr_1fr_80px_80px_100px_56px] gap-2 px-4 py-3 border-b border-[#1F1410]/5 text-[10px] font-semibold text-[#1F1410]/40 uppercase tracking-wide">
         <div />
         <div />
         <div>Goal</div>
+        <div>Deadline</div>
         <div>Progress</div>
-        <div className="text-right">Deadline</div>
+        <div />
         <div className="text-right">Monthly</div>
+        <div />
       </div>
 
       {/* Table rows */}
@@ -711,7 +713,7 @@ export function SavingsGoalsSection({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: index * 0.03, duration: 0.2 }}
-              className="group grid grid-cols-[24px_32px_1fr_120px_100px_100px] gap-2 px-4 py-2 items-center hover:bg-[#1F1410]/[0.015] transition-colors"
+              className="group grid grid-cols-[24px_32px_1fr_1fr_80px_80px_100px_56px] gap-2 px-4 py-2 items-center hover:bg-[#1F1410]/[0.015] transition-colors"
             >
               {/* Spacer (matches drag handle column) */}
               <div />
@@ -731,28 +733,20 @@ export function SavingsGoalsSection({
                 </p>
               </div>
 
-              {/* Progress */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-[#1F1410]/60">
-                  {Math.round(goal.progress)}%
-                </span>
-                <div className="flex-1 h-1.5 bg-[#1F1410]/5 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${Math.min(goal.progress, 100)}%`,
-                      backgroundColor: goal.color,
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Deadline */}
-              <div className="text-right text-xs text-[#1F1410]/40 font-medium">
+              {/* Deadline (aligned with Parent column) */}
+              <div className="text-xs text-[#1F1410]/40 font-medium">
                 {deadlineStr}
               </div>
 
-              {/* Monthly budget input */}
+              {/* Progress (aligned with Type column) */}
+              <div className="text-xs font-medium text-[#1F1410]/60">
+                {Math.round(goal.progress)}%
+              </div>
+
+              {/* Spacer (aligned with Last Mo. column) */}
+              <div />
+
+              {/* Monthly budget input (aligned with Budget column) */}
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1F1410]/40 text-sm font-medium">
                   $
@@ -764,6 +758,9 @@ export function SavingsGoalsSection({
                   className="w-full pl-6 pr-2 py-1 text-right font-semibold text-[#1F1410] bg-[#1F1410]/[0.03] rounded-lg focus:bg-white focus:ring-2 focus:ring-[#38BDF8]/20 focus:outline-none transition-all text-sm"
                 />
               </div>
+
+              {/* Actions spacer (matches category table) */}
+              <div />
             </motion.div>
           )
         })}

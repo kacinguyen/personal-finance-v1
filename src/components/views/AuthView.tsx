@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Mail, Lock, Loader2, AlertCircle, User, ArrowRight } from 'lucide-react'
+import { Mail, Lock, Loader2, AlertCircle, ArrowRight } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
 type AuthMode = 'sign-in' | 'sign-up'
@@ -68,9 +68,9 @@ export function AuthView() {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
-            className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#A855F7] to-[#EC4899] flex items-center justify-center mx-auto mb-4"
+            className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#14B8A6] to-[#10B981] flex items-center justify-center mx-auto mb-4"
           >
-            <User className="w-8 h-8 text-white" />
+            <Mail className="w-8 h-8 text-white" />
           </motion.div>
           <h1 className="text-3xl font-bold text-[#1F1410]">Pachi</h1>
           <p className="text-[#1F1410]/60 mt-2">
