@@ -10,21 +10,6 @@ export const STATUS_COLORS = {
   error: '#FF6B6B',    // Red - over budget, negative
 } as const
 
-// Category type colors
-export const CATEGORY_COLORS = {
-  need: '#10B981',     // Green
-  want: '#A855F7',     // Purple
-  income: '#10B981',   // Green
-  savings: '#38BDF8',  // Sky blue
-} as const
-
-// Primary brand colors
-export const BRAND_COLORS = {
-  primary: '#6366F1',    // Indigo
-  secondary: '#1F1410',  // Dark brown
-  background: '#FFFBF5', // Warm white
-} as const
-
 // Chart colors
 export const CHART_COLORS = {
   spent: '#F59E0B',      // Amber
@@ -52,22 +37,6 @@ export const ACCOUNT_GROUP_COLORS = {
   loan: '#F59E0B',     // Amber
   retirement: '#A855F7', // Purple
 } as const
-
-// Available colors for category/goal creation
-export const PALETTE = [
-  '#FF6B6B', // Red
-  '#A855F7', // Purple
-  '#38BDF8', // Sky blue
-  '#EC4899', // Pink
-  '#F59E0B', // Amber
-  '#10B981', // Emerald
-  '#6366F1', // Indigo
-  '#F97316', // Orange
-  '#14B8A6', // Teal
-  '#8B5CF6', // Violet
-  '#EF4444', // Red 500
-  '#6B7280', // Gray
-] as const
 
 // Opacity variants for backgrounds
 export const withOpacity = (color: string, opacity: number): string => {

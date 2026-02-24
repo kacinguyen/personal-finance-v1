@@ -260,7 +260,7 @@ export function parsedToInsert(
  * 3. Creates goal_contribution records with source='paystub'
  * 4. Skips if contribution already exists for this paystub (prevents duplicates)
  */
-export async function processAutoContributions(
+async function processAutoContributions(
   paystubId: string,
   paystubData: PaystubInsert,
   userId: string
