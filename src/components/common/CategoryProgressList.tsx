@@ -147,7 +147,7 @@ function CategoryGroup({ parent, children, defaultExpanded = true, selectedCateg
             transition={{ duration: 0.2, ease: 'easeInOut' }}
             className="overflow-hidden"
           >
-            <div className="pl-4 pr-1 space-y-3 pt-2">
+            <div className="pl-4 pr-1 space-y-3 pt-2 mx-2">
               {activeChildren.map((category, index) => {
                 const IconComponent = category.icon
                 const percentage = category.budget > 0
