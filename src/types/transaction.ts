@@ -28,6 +28,7 @@ export type Transaction = {
   created_at: string
   updated_at: string
   needs_review: boolean
+  goal_id: string | null
 }
 
 /**
@@ -94,6 +95,7 @@ export const csvRowToTransaction = (row: CSVTransactionRow): TransactionInsert =
   source: 'csv_import',
   source_name: null,
   needs_review: true,
+  goal_id: null,
 })
 
 /**
@@ -131,6 +133,7 @@ export const plaidToTransaction = (
   source: 'plaid',
   source_name: sourceName || null,
   needs_review: true,
+  goal_id: null,
 })
 
 /**

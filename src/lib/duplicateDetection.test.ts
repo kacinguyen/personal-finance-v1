@@ -29,6 +29,7 @@ function makeTx(overrides: Partial<Transaction> = {}): Transaction {
     created_at: '2024-03-15T12:00:00Z',
     updated_at: '2024-03-15T12:00:00Z',
     needs_review: false,
+    goal_id: null,
     ...overrides,
   }
 }

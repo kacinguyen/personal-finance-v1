@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, DollarSign, Calendar, Store, Tag, ChevronDown, Hash, FileText, Trash2 } from 'lucide-react'
+import { X, DollarSign, Calendar, Store, Tag, ChevronDown, Hash, FileText, Trash2, PiggyBank } from 'lucide-react'
 import type { UICategory } from '../../types/category'
 
 type CategoryGroup = {
@@ -19,6 +19,7 @@ export type TransactionFormData = {
   tags: string | null
   notes: string | null
   type: TransactionType
+  goal_id?: string | null
 }
 
 type AddTransactionModalProps = {
@@ -29,6 +30,7 @@ type AddTransactionModalProps = {
   categories: UICategory[]
   incomeCategories: UICategory[]
   transferCategories: UICategory[]
+  goals?: { id: string; name: string; color: string }[]
   defaultDate?: string
   editTransaction?: TransactionFormData | null
 }
@@ -41,6 +43,7 @@ export function AddTransactionModal({
   categories,
   incomeCategories,
   transferCategories,
+  goals = [],
   defaultDate,
   editTransaction,
 }: AddTransactionModalProps) {
@@ -55,6 +58,7 @@ export function AddTransactionModal({
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [transactionType, setTransactionType] = useState<TransactionType>('expense')
+  const [goalId, setGoalId] = useState<string | null>(null)
 
   const isEditing = !!editTransaction?.id
   const merchantInputRef = useRef<HTMLInputElement>(null)
@@ -77,6 +81,7 @@ export function AddTransactionModal({
       setTags(editTransaction.tags || '')
       setNotes(editTransaction.notes || '')
       setTransactionType(editTransaction.type || 'expense')
+      setGoalId(editTransaction.goal_id || null)
       setError(null)
     } else if (!isOpen) {
       setMerchant('')
@@ -86,6 +91,7 @@ export function AddTransactionModal({
       setTags('')
       setNotes('')
       setTransactionType('expense')
+      setGoalId(null)
       setError(null)
     }
   }, [isOpen, editTransaction, defaultDate])
@@ -167,6 +173,7 @@ export function AddTransactionModal({
         tags: tags.trim() || null,
         notes: notes.trim() || null,
         type: transactionType,
+        goal_id: goalId,
       })
       onClose()
     } catch (err) {
@@ -222,7 +229,7 @@ export function AddTransactionModal({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col"
+              className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col border border-[#1F1410]/10"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -253,7 +260,7 @@ export function AddTransactionModal({
               <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1">
                 {/* Transaction Type Toggle */}
                 <div>
-                  <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-1.5">
+                  <label className="block text-[10px] font-medium text-[#1F1410]/50 uppercase tracking-wider mb-1.5">
                     Type
                   </label>
                   <div className="flex items-center gap-1 bg-[#1F1410]/5 rounded-lg p-1">
@@ -279,7 +286,7 @@ export function AddTransactionModal({
 
                 {/* Merchant Name */}
                 <div>
-                  <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-1.5">
+                  <label className="block text-[10px] font-medium text-[#1F1410]/50 uppercase tracking-wider mb-1.5">
                     Merchant Name
                   </label>
                   <div className="relative">
@@ -297,7 +304,7 @@ export function AddTransactionModal({
 
                 {/* Amount */}
                 <div>
-                  <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-1.5">
+                  <label className="block text-[10px] font-medium text-[#1F1410]/50 uppercase tracking-wider mb-1.5">
                     Amount
                   </label>
                   <div className="relative">
@@ -315,7 +322,7 @@ export function AddTransactionModal({
 
                 {/* Date */}
                 <div>
-                  <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-1.5">
+                  <label className="block text-[10px] font-medium text-[#1F1410]/50 uppercase tracking-wider mb-1.5">
                     Date
                   </label>
                   <div className="relative">
@@ -331,7 +338,7 @@ export function AddTransactionModal({
 
                 {/* Category */}
                 <div ref={categoryDropdownRef}>
-                  <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-1.5">
+                  <label className="block text-[10px] font-medium text-[#1F1410]/50 uppercase tracking-wider mb-1.5">
                     Category (optional)
                   </label>
                   <div className="relative">
@@ -446,7 +453,7 @@ export function AddTransactionModal({
 
                 {/* Tags */}
                 <div>
-                  <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-1.5">
+                  <label className="block text-[10px] font-medium text-[#1F1410]/50 uppercase tracking-wider mb-1.5">
                     Tags (optional)
                   </label>
                   <div className="relative">
@@ -463,7 +470,7 @@ export function AddTransactionModal({
 
                 {/* Notes */}
                 <div>
-                  <label className="block text-xs font-semibold text-[#1F1410]/50 uppercase tracking-wide mb-1.5">
+                  <label className="block text-[10px] font-medium text-[#1F1410]/50 uppercase tracking-wider mb-1.5">
                     Notes (optional)
                   </label>
                   <div className="relative">
@@ -475,6 +482,37 @@ export function AddTransactionModal({
                       rows={2}
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#1F1410]/10 focus:border-[#F59E0B]/30 focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/10 transition-all placeholder:text-[#1F1410]/30 resize-none"
                     />
+                  </div>
+                </div>
+
+                {/* Savings Goal */}
+                <div>
+                  <label className="block text-[10px] font-medium text-[#1F1410]/50 uppercase tracking-wider mb-1.5">
+                    Savings Goal (optional)
+                  </label>
+                  <div className="relative">
+                    <PiggyBank className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#1F1410]/30" />
+                    {goals.length > 0 ? (
+                      <>
+                        <select
+                          value={goalId || ''}
+                          onChange={(e) => setGoalId(e.target.value || null)}
+                          className={`w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#1F1410]/10 focus:border-[#F59E0B]/30 focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/10 transition-all appearance-none bg-white ${goalId ? 'text-[#1F1410]' : 'text-[#1F1410]/30'}`}
+                        >
+                          <option value="">No goal</option>
+                          {goals.map((goal) => (
+                            <option key={goal.id} value={goal.id}>
+                              {goal.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1F1410]/40 pointer-events-none" />
+                      </>
+                    ) : (
+                      <p className="pl-10 pr-4 py-2.5 rounded-xl border border-[#1F1410]/10 text-[#1F1410]/30 text-sm">
+                        No goals yet — create one in Savings
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -503,7 +541,7 @@ export function AddTransactionModal({
                     whileTap={{ scale: 0.98 }}
                     type="submit"
                     disabled={saving}
-                    className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-white bg-[#F59E0B] hover:bg-[#F59E0B]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-white bg-[#1F1410] hover:bg-[#1F1410]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {saving ? 'Saving...' : isEditing ? 'Save Changes' : 'Add Transaction'}
                   </motion.button>

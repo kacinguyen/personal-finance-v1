@@ -10,6 +10,7 @@ import {
   Split,
   Pencil,
   CheckCircle2,
+  PiggyBank,
   AlertTriangle,
   GitMerge,
   Search,
@@ -23,7 +24,7 @@ import type { UITransaction } from '../views/TransactionsView'
 import type { UICategory } from '../../types/category'
 import type { DuplicatePair } from '../../types/duplicateReconciliation'
 
-type EditingField = 'merchant' | 'amount' | 'category' | 'date' | 'tags' | 'notes' | null
+type EditingField = 'merchant' | 'amount' | 'category' | 'date' | 'tags' | 'notes' | 'goal' | null
 
 type FieldSaveUpdates = Partial<{
   merchant: string
@@ -33,6 +34,7 @@ type FieldSaveUpdates = Partial<{
   category_id: string | null
   tags: string | null
   notes: string | null
+  goal_id: string | null
 }>
 
 type TransactionDetailPanelProps = {
@@ -41,6 +43,7 @@ type TransactionDetailPanelProps = {
   categories: UICategory[]
   incomeCategories: UICategory[]
   transferCategories: UICategory[]
+  goals?: { id: string; name: string; color: string }[]
   onEdit: () => void
   onDelete: () => void
   onMarkAsReviewed: (transactionId: string) => void
@@ -308,6 +311,7 @@ export function TransactionDetailPanel({
   categories,
   incomeCategories,
   transferCategories,
+  goals = [],
   onEdit,
   onDelete: _onDelete,
   onMarkAsReviewed,
@@ -776,6 +780,67 @@ export function TransactionDetailPanel({
                       <p className="text-sm text-[#1F1410]/30 mt-0.5">Add a note...</p>
                     )}
                   </div>
+                )}
+              </div>
+            </div>
+
+            {/* Savings Goal - editable dropdown */}
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-[#1F1410]/5 flex items-center justify-center flex-shrink-0">
+                <PiggyBank className="w-4 h-4 text-[#1F1410]/50" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-[#1F1410]/50 uppercase tracking-wide">Savings Goal</p>
+                {goals.length > 0 ? (
+                  editingField === 'goal' ? (
+                    <select
+                      value={selectedTransaction.goal_id || ''}
+                      onChange={async (e) => {
+                        const newGoalId = e.target.value || null
+                        setSaving(true)
+                        try {
+                          await onFieldSave(selectedTransaction.id, { goal_id: newGoalId })
+                        } finally {
+                          setSaving(false)
+                        }
+                        setEditingField(null)
+                      }}
+                      onBlur={() => setEditingField(null)}
+                      autoFocus
+                      className="text-sm w-full bg-[#1F1410]/[0.03] rounded-md px-1 -mx-1 py-1 outline-none ring-1 ring-[#14B8A6]/40 text-[#1F1410]"
+                    >
+                      <option value="">None</option>
+                      {goals.map((goal) => (
+                        <option key={goal.id} value={goal.id}>
+                          {goal.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div
+                      onClick={() => startEditing('goal')}
+                      className={`${editableFieldClass} min-h-[24px]`}
+                    >
+                      {selectedTransaction.goal_id ? (() => {
+                        const goal = goals.find(g => g.id === selectedTransaction.goal_id)
+                        return goal ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium mt-0.5"
+                            style={{ backgroundColor: `${goal.color}15`, color: goal.color }}
+                          >
+                            <PiggyBank className="w-3 h-3" />
+                            {goal.name}
+                          </span>
+                        ) : (
+                          <p className="text-sm text-[#1F1410]/30 mt-0.5">Select a goal...</p>
+                        )
+                      })() : (
+                        <p className="text-sm text-[#1F1410]/30 mt-0.5">Link to a goal...</p>
+                      )}
+                    </div>
+                  )
+                ) : (
+                  <p className="text-sm text-[#1F1410]/30 mt-0.5">No goals yet</p>
                 )}
               </div>
             </div>

@@ -121,6 +121,7 @@ function csvRowsToTransactions(
       source: 'csv_import' as const,
       source_name: null,
       needs_review: true,
+      goal_id: null,
     }
   })
 }

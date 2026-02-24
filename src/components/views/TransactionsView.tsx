@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
 import {
-  ArrowLeftRight,
   CircleDollarSign,
   ChevronLeft,
   ChevronRight,
@@ -25,8 +24,6 @@ import { useMerchantRules } from '../../hooks/useMerchantRules'
 import type { MatchType } from '../../hooks/useMerchantRules'
 import { MonthPicker } from '../common/MonthPicker'
 import { getMonthRange } from '../../lib/dateUtils'
-import { TAB_COLORS } from '../../lib/colors'
-import { SHADOWS } from '../../lib/styles'
 import type { Transaction as DBTransaction } from '../../types/transaction'
 import type { TransactionSplit } from '../../types/transactionSplit'
 import type { UISplit } from '../../types/transactionSplit'
@@ -61,10 +58,12 @@ export type UITransaction = {
   type: 'income' | 'expense' | 'transfer'
   needs_review: boolean
   splits: UITransactionSplit[]
+  goal_id: string | null
 }
 
 export type FilterType = 'all' | 'income' | 'expense' | 'transfer'
 export type ReviewFilter = 'all' | 'to_review' | 'reviewed'
+export type SortOrder = 'newest' | 'oldest'
 
 export type Filters = {
   type: FilterType
@@ -95,6 +94,7 @@ export function formatDisplayDate(dateStr: string): string {
 }
 
 export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) => void }) {
+  const [showAll, setShowAll] = useState(false)
   const ITEMS_PER_PAGE = 25
 
   const { userId } = useUser()
@@ -118,6 +118,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
     accountSource: null,
     searchQuery: '',
   })
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest')
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
   const [showSourceDropdown, setShowSourceDropdown] = useState(false)
   const [showFiltersPanel, setShowFiltersPanel] = useState(false)
@@ -130,6 +131,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
   const [isReconcileModalOpen, setIsReconcileModalOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [accountTypeMap, setAccountTypeMap] = useState<AccountTypeMap>(new Map())
+  const [goals, setGoals] = useState<{ id: string; name: string; color: string }[]>([])
 
   // Convert DB categories to UI categories with resolved icons (all categories for filtering)
   const allUiCategories = useMemo<UICategory[]>(() => {
@@ -216,6 +218,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
       type,
       needs_review: tx.needs_review ?? false,
       splits: uiSplits,
+      goal_id: tx.goal_id ?? null,
     }
   }, [dbCategories, findCategoryByName, transferCategories])
 
@@ -297,6 +300,19 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
     fetchAccountTypes()
   }, [])
 
+  // Fetch active goals for linking
+  useEffect(() => {
+    async function fetchGoals() {
+      const { data } = await supabase
+        .from('goals')
+        .select('id, name, color')
+        .eq('is_active', true)
+        .order('name')
+      if (data) setGoals(data)
+    }
+    fetchGoals()
+  }, [])
+
   // Load transactions when selected month or categories change
   useEffect(() => {
     if (dbCategories.length > 0) {
@@ -304,9 +320,9 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
     }
   }, [fetchTransactions, dbCategories.length, selectedMonth])
 
-  // Filtered transactions
+  // Filtered and sorted transactions
   const filteredTransactions = useMemo(() => {
-    return transactions.filter((tx) => {
+    const filtered = transactions.filter((tx) => {
       // Type filter
       if (filters.type === 'income' && tx.type !== 'income') return false
       if (filters.type === 'expense' && tx.type !== 'expense') return false
@@ -333,7 +349,16 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
 
       return true
     })
-  }, [transactions, filters])
+
+    // Sort by date
+    if (sortOrder === 'oldest') {
+      filtered.sort((a, b) => a.rawDate.localeCompare(b.rawDate))
+    } else {
+      filtered.sort((a, b) => b.rawDate.localeCompare(a.rawDate))
+    }
+
+    return filtered
+  }, [transactions, filters, sortOrder])
 
   // To Review count
   const toReviewCount = useMemo(() => {
@@ -355,9 +380,10 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
   // Pagination
   const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE)
   const paginatedTransactions = useMemo(() => {
+    if (showAll) return filteredTransactions
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
     return filteredTransactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-  }, [filteredTransactions, currentPage])
+  }, [filteredTransactions, currentPage, showAll])
 
   // Reset page when filters change
   useEffect(() => {
@@ -395,6 +421,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
           category_id: transaction.category?.id || null,
           tags: transaction.tags,
           notes: transaction.notes,
+          goal_id: transaction.goal_id || null,
         })
         .eq('id', transaction.id)
 
@@ -415,6 +442,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
         pending: false,
         tags: transaction.tags,
         notes: transaction.notes,
+        goal_id: transaction.goal_id || null,
         plaid_transaction_id: null,
         plaid_account_id: null,
         plaid_category: null,
@@ -443,7 +471,9 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
       throw new Error('Failed to delete transaction')
     }
 
-    await fetchTransactions()
+    // Optimistically remove from local state instead of refetching
+    setTransactions(prev => prev.filter(t => t.id !== transactionId))
+    setRawTransactions(prev => prev.filter(t => t.id !== transactionId))
   }
 
   const handleTransactionClick = (transaction: UITransaction) => {
@@ -474,6 +504,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
       tags: selectedTransaction.tags,
       notes: selectedTransaction.notes,
       type: selectedTransaction.type,
+      goal_id: selectedTransaction.goal_id,
     })
     setIsAddModalOpen(true)
   }
@@ -492,6 +523,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
     category_id: string | null
     tags: string | null
     notes: string | null
+    goal_id: string | null
   }>) => {
     // Build DB update payload
     const dbUpdates: Record<string, unknown> = {}
@@ -502,6 +534,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
     if (updates.category_id !== undefined) dbUpdates.category_id = updates.category_id
     if (updates.tags !== undefined) dbUpdates.tags = updates.tags
     if (updates.notes !== undefined) dbUpdates.notes = updates.notes
+    if (updates.goal_id !== undefined) dbUpdates.goal_id = updates.goal_id
 
     // Optimistically update rawTransactions
     const prevRaw = rawTransactions
@@ -718,10 +751,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
           className="mb-8"
         >
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-3">
-              <ArrowLeftRight className="w-8 h-8" style={{ color: TAB_COLORS.transactions }} />
-              <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Transactions</h1>
-            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Transactions</h1>
             <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </div>
         </motion.div>
@@ -735,8 +765,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
         >
           {/* Left Column: Search/Filters + Transactions List */}
           <div
-            className="bg-white rounded-2xl overflow-hidden"
-            style={{ boxShadow: SHADOWS.card }}
+            className="bg-white rounded-2xl overflow-hidden border border-[#1F1410]/5"
           >
             {/* Compact Toolbar */}
             <TransactionToolbar
@@ -759,6 +788,8 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
               fileInputRef={fileInputRef}
               selectedCategory={selectedCategory ?? null}
               allFilterTypes={filterTypes}
+              sortOrder={sortOrder}
+              onSortChange={setSortOrder}
             />
 
             {/* Review Status Tabs */}
@@ -846,33 +877,43 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
                 </div>
 
                 {/* Pagination Controls */}
-                {totalPages > 1 && (
+                {filteredTransactions.length > ITEMS_PER_PAGE && (
                   <div className="flex items-center justify-between px-6 py-4 border-t border-[#1F1410]/5">
                     <p className="text-sm text-[#1F1410]/50">
-                      Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}-
-                      {Math.min(currentPage * ITEMS_PER_PAGE, filteredTransactions.length)} of{' '}
-                      {filteredTransactions.length}
+                      {showAll
+                        ? `Showing all ${filteredTransactions.length}`
+                        : `Showing ${(currentPage - 1) * ITEMS_PER_PAGE + 1}-${Math.min(currentPage * ITEMS_PER_PAGE, filteredTransactions.length)} of ${filteredTransactions.length}`}
                     </p>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       <button
-                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                        disabled={currentPage === 1}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#1F1410]/5"
+                        onClick={() => { setShowAll(!showAll); setCurrentPage(1) }}
+                        className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors hover:bg-[#1F1410]/5 text-[#1F1410]/60"
                       >
-                        <ChevronLeft className="w-4 h-4" />
-                        Previous
+                        {showAll ? 'Show 25' : 'Show All'}
                       </button>
-                      <span className="text-sm text-[#1F1410]/60 px-2">
-                        Page {currentPage} of {totalPages}
-                      </span>
-                      <button
-                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                        disabled={currentPage === totalPages}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#1F1410]/5"
-                      >
-                        Next
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
+                      {!showAll && (
+                        <>
+                          <button
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#1F1410]/5"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                            Previous
+                          </button>
+                          <span className="text-sm text-[#1F1410]/60 px-2">
+                            Page {currentPage} of {totalPages}
+                          </span>
+                          <button
+                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#1F1410]/5"
+                          >
+                            Next
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
@@ -887,6 +928,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
             categories={expenseCategories}
             incomeCategories={incomeUiCategories}
             transferCategories={transferUiCategories}
+            goals={goals}
             onEdit={handleEditSelectedTransaction}
             onDelete={handleDeleteSelectedTransaction}
             onMarkAsReviewed={handleMarkAsReviewed}
@@ -909,6 +951,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
         categories={expenseCategories}
         incomeCategories={incomeUiCategories}
         transferCategories={transferUiCategories}
+        goals={goals}
         defaultDate={new Date().toISOString().split('T')[0]}
         editTransaction={editingTransaction}
       />

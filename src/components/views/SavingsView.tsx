@@ -19,22 +19,12 @@ import {
   LucideIcon,
   Loader2,
   Building2,
+  Tag,
 } from 'lucide-react'
 import { GoalCustomizationModal } from '../modals/GoalCustomizationModal'
 import { GoalContributionHistory } from '../common/GoalContributionHistory'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
-
-type GoalTemplate = {
-  id: string
-  name: string
-  icon: LucideIcon
-  iconName: string
-  color: string
-  suggestedAmount: number
-  description: string
-  goalType: string
-}
 
 // Map icon names to Lucide components (for editing existing goals)
 const iconNameToComponent: Record<string, LucideIcon> = {
@@ -53,6 +43,7 @@ const iconNameToComponent: Record<string, LucideIcon> = {
 type ActiveGoal = {
   id: string
   name: string
+  tag: string
   icon: LucideIcon
   color: string
   currentAmount: number
@@ -78,6 +69,14 @@ type DbGoal = {
   contribution_field: string | null
 }
 
+function nameToTag(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+}
+
 // Convert database goal to ActiveGoal for display
 const dbGoalToActiveGoal = (dbGoal: DbGoal): ActiveGoal => {
   const targetDate = dbGoal.deadline ? new Date(dbGoal.deadline) : new Date()
@@ -101,7 +100,8 @@ const dbGoalToActiveGoal = (dbGoal: DbGoal): ActiveGoal => {
   return {
     id: dbGoal.id,
     name: dbGoal.name,
-    icon: iconNameToComponent[dbGoal.icon] || Sparkles,
+    tag: nameToTag(dbGoal.name),
+    icon: iconNameToComponent[dbGoal.icon] || PiggyBank,
     color: dbGoal.color,
     currentAmount: Number(dbGoal.current_amount),
     targetAmount: Number(dbGoal.target_amount),
@@ -115,7 +115,6 @@ const dbGoalToActiveGoal = (dbGoal: DbGoal): ActiveGoal => {
 
 export function SavingsView() {
   const { user } = useAuth()
-  const [selectedGoalTemplate, setSelectedGoalTemplate] = useState<GoalTemplate | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [activeGoals, setActiveGoals] = useState<ActiveGoal[]>([])
   const [editingGoal, setEditingGoal] = useState<ActiveGoal | null>(null)
@@ -144,7 +143,19 @@ export function SavingsView() {
     fetchGoals()
   }, [fetchGoals])
 
-  const handleSaveGoal = async (customizedGoal: { id?: string; name: string; amount: number; currentAmount?: number; targetDate: Date; template: GoalTemplate; autoContribute?: boolean; contributionField?: string | null }) => {
+  const handleSaveGoal = async (customizedGoal: {
+    id?: string
+    name: string
+    tag: string
+    amount: number
+    currentAmount?: number
+    targetDate: Date
+    goalType: string
+    icon: string
+    color: string
+    autoContribute?: boolean
+    contributionField?: string | null
+  }) => {
     const deadlineStr = customizedGoal.targetDate.toISOString().split('T')[0]
 
     if (customizedGoal.id) {
@@ -181,9 +192,9 @@ export function SavingsView() {
           target_amount: customizedGoal.amount,
           current_amount: 0,
           deadline: deadlineStr,
-          goal_type: customizedGoal.template.goalType,
-          icon: customizedGoal.template.iconName,
-          color: customizedGoal.template.color,
+          goal_type: customizedGoal.goalType,
+          icon: customizedGoal.icon,
+          color: customizedGoal.color,
           is_active: true,
           auto_contribute: customizedGoal.autoContribute ?? false,
           contribution_field: customizedGoal.contributionField ?? null,
@@ -198,28 +209,11 @@ export function SavingsView() {
   }
 
   const handleAddGoal = () => {
-    setSelectedGoalTemplate(null)
     setEditingGoal(null)
     setIsModalOpen(true)
   }
 
   const handleEditGoal = (goal: ActiveGoal) => {
-    // Construct a template from the existing goal's data for editing
-    const iconName = Object.keys(iconNameToComponent).find(
-      key => iconNameToComponent[key] === goal.icon
-    ) || 'Sparkles'
-
-    const template: GoalTemplate = {
-      id: goal.id,
-      name: goal.name,
-      icon: goal.icon,
-      iconName,
-      color: goal.color,
-      suggestedAmount: goal.targetAmount,
-      description: '',
-      goalType: 'custom',
-    }
-    setSelectedGoalTemplate(template)
     setEditingGoal(goal)
     setIsModalOpen(true)
   }
@@ -241,7 +235,6 @@ export function SavingsView() {
   const handleCloseModal = () => {
     setIsModalOpen(false)
     setEditingGoal(null)
-    setSelectedGoalTemplate(null)
   }
 
   const getStatusColor = (status: ActiveGoal['status']) => {
@@ -275,17 +268,7 @@ export function SavingsView() {
           className="mb-8"
         >
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-3">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
-                className="w-12 h-12 rounded-xl bg-[#38BDF8]/10 flex items-center justify-center"
-              >
-                <PiggyBank className="w-6 h-6 text-[#38BDF8]" />
-              </motion.div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Savings</h1>
-            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Savings</h1>
           </div>
         </motion.div>
 
@@ -297,7 +280,7 @@ export function SavingsView() {
         ) : (
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-[#1F1410]">Active Goals</h2>
+              <h2 className="text-lg font-bold text-[#1F1410]">Active Goals</h2>
               <button
                 onClick={handleAddGoal}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[#38BDF8] hover:bg-[#38BDF8]/10 rounded-lg transition-colors"
@@ -314,13 +297,11 @@ export function SavingsView() {
                 const Icon = goal.icon
                 const StatusIcon = getStatusIcon(goal.status)
                 const statusColor = getStatusColor(goal.status)
-                const progressPercentage = (goal.currentAmount / goal.targetAmount) * 100
                 const remaining = goal.targetAmount - goal.currentAmount
                 return (
                   <div
                     key={goal.id}
-                    className="bg-white rounded-2xl p-6 shadow-sm"
-                    style={{ boxShadow: '0 2px 12px rgba(31, 20, 16, 0.06)' }}
+                    className="bg-white rounded-2xl p-6 border border-[#1F1410]/5"
                   >
                     {/* Goal Header */}
                     <div className="flex items-start justify-between mb-4">
@@ -333,12 +314,26 @@ export function SavingsView() {
                         </div>
                         <div>
                           <h3 className="font-bold text-lg text-[#1F1410]">{goal.name}</h3>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <Calendar className="w-3.5 h-3.5 text-[#1F1410]/40" />
-                            <span className="text-xs text-[#1F1410]/50">
-                              Target: {goal.targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </span>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-[#1F1410]/40" />
+                              <span className="text-xs text-[#1F1410]/50">
+                                Target: {goal.targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
+                            </div>
                           </div>
+                          {/* Tag pill */}
+                          {goal.tag && (
+                            <div className="flex items-center gap-1 mt-1.5">
+                              <Tag className="w-3 h-3" style={{ color: goal.color }} />
+                              <span
+                                className="px-2 py-0.5 rounded-full text-[10px] font-medium"
+                                style={{ backgroundColor: `${goal.color}15`, color: goal.color }}
+                              >
+                                {goal.tag}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -370,27 +365,17 @@ export function SavingsView() {
                     {/* Progress Amount */}
                     <div className="mb-3">
                       <div className="flex items-baseline gap-2 mb-1">
-                        <span className="text-3xl font-bold text-[#1F1410]">${goal.currentAmount.toLocaleString()}</span>
+                        <span className="text-3xl font-light text-[#1F1410]">${goal.currentAmount.toLocaleString()}</span>
                         <span className="text-sm text-[#1F1410]/50">of ${goal.targetAmount.toLocaleString()}</span>
                       </div>
                       <p className="text-xs text-[#1F1410]/40">${remaining.toLocaleString()} remaining</p>
                     </div>
 
-                    {/* Progress Bar */}
+                    {/* Remaining metric */}
                     <div className="mb-4">
-                      <div className="flex justify-between text-xs text-[#1F1410]/50 mb-2">
-                        <span>{Math.round(progressPercentage)}% complete</span>
-                        <span>${goal.monthlyTarget.toLocaleString()}/month</span>
-                      </div>
-                      <div className="h-2.5 bg-[#1F1410]/5 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            backgroundColor: goal.color,
-                            width: `${Math.min(progressPercentage, 100)}%`,
-                          }}
-                        />
-                      </div>
+                      <p className="text-sm font-medium" style={{ color: goal.color }}>
+                        ${remaining.toLocaleString()} remaining
+                      </p>
                     </div>
 
                     {/* Status Message */}
@@ -415,7 +400,6 @@ export function SavingsView() {
       {/* Goal Customization Modal */}
       <GoalCustomizationModal
         isOpen={isModalOpen}
-        goal={selectedGoalTemplate}
         editingGoal={editingGoal ? {
           id: editingGoal.id,
           name: editingGoal.name,
