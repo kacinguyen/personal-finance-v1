@@ -3,13 +3,13 @@ import { usePlaidLink as useReactPlaidLink } from 'react-plaid-link'
 import { supabase } from '../lib/supabase'
 
 type UsePlaidLinkOptions = {
-  /** Pass an access_token to enter Plaid Link update (re-auth) mode. */
-  accessToken?: string
+  /** Pass a plaid_item_id to enter Plaid Link update (re-auth) mode. */
+  plaidItemId?: string
   /** Called after successful token exchange with the new accounts. */
   onSuccess?: () => void
 }
 
-export function usePlaidLink({ accessToken, onSuccess }: UsePlaidLinkOptions = {}) {
+export function usePlaidLink({ plaidItemId, onSuccess }: UsePlaidLinkOptions = {}) {
   const [linkToken, setLinkToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -20,7 +20,7 @@ export function usePlaidLink({ accessToken, onSuccess }: UsePlaidLinkOptions = {
 
     try {
       const body: Record<string, string> = {}
-      if (accessToken) body.access_token = accessToken
+      if (plaidItemId) body.plaid_item_id = plaidItemId
 
       const { data, error: fnError } = await supabase.functions.invoke(
         'plaid-create-link-token',
@@ -43,7 +43,7 @@ export function usePlaidLink({ accessToken, onSuccess }: UsePlaidLinkOptions = {
       setError(err instanceof Error ? err.message : 'Failed to create link token')
       setLoading(false)
     }
-  }, [accessToken])
+  }, [plaidItemId])
 
   const handlePlaidSuccess = useCallback(
     async (publicToken: string, metadata: { institution: { institution_id: string; name: string } | null }) => {

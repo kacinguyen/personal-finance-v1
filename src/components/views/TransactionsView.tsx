@@ -31,6 +31,7 @@ import { useUser } from '../../hooks/useUser'
 import { TransactionDetailPanel } from '../transactions/TransactionDetailPanel'
 import { TransactionFilterPanel } from '../transactions/TransactionFilterPanel'
 import { TransactionToolbar } from '../transactions/TransactionToolbar'
+import { isDemoMode } from '../../lib/demo'
 
 export type UITransactionSplit = {
   id: string
@@ -821,7 +822,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
               allFilterTypes={filterTypes}
               sortOrder={sortOrder}
               onSortChange={setSortOrder}
-              onSyncTransactions={handleSyncTransactions}
+              onSyncTransactions={isDemoMode ? undefined : handleSyncTransactions}
               syncing={syncing}
             />
 

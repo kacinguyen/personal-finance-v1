@@ -5,8 +5,8 @@ import { TAB_COLORS } from '../../lib/colors'
 type PlaidLinkButtonProps = {
   /** Called after successful Plaid Link flow and token exchange. */
   onSuccess?: () => void
-  /** Pass access_token for re-auth / update mode. */
-  accessToken?: string
+  /** Pass plaid_item_id for re-auth / update mode. */
+  plaidItemId?: string
   className?: string
   /** Button label override. */
   label?: string
@@ -14,13 +14,13 @@ type PlaidLinkButtonProps = {
 
 export function PlaidLinkButton({
   onSuccess,
-  accessToken,
+  plaidItemId,
   className = '',
   label,
 }: PlaidLinkButtonProps) {
-  const { openLink, loading, error } = usePlaidLink({ accessToken, onSuccess })
+  const { openLink, loading, error } = usePlaidLink({ plaidItemId, onSuccess })
 
-  const buttonLabel = label ?? (accessToken ? 'Re-connect' : 'Connect Bank')
+  const buttonLabel = label ?? (plaidItemId ? 'Re-connect' : 'Connect Bank')
 
   return (
     <div className="inline-flex flex-col items-end">

@@ -35,6 +35,7 @@ import {
   ACCOUNT_TYPE_TO_GROUP,
   isAssetType,
 } from '../../types/account'
+import { isDemoMode } from '../../lib/demo'
 
 // --- Exported constants for sub-components ---
 
@@ -535,21 +536,23 @@ export function AccountsView() {
                   <PencilLine className="w-4 h-4 text-[#1F1410]/50" />
                   Manual Add
                 </button>
-                <button
-                  onClick={() => {
-                    openPlaidLink()
-                    setShowAddDropdown(false)
-                  }}
-                  disabled={plaidLinkLoading}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-[#1F1410]/5 transition-colors text-[#1F1410] disabled:opacity-60"
-                >
-                  {plaidLinkLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-[#1F1410]/50" />
-                  ) : (
-                    <Link2 className="w-4 h-4 text-[#1F1410]/50" />
-                  )}
-                  Connect Bank
-                </button>
+                {!isDemoMode && (
+                  <button
+                    onClick={() => {
+                      openPlaidLink()
+                      setShowAddDropdown(false)
+                    }}
+                    disabled={plaidLinkLoading}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-[#1F1410]/5 transition-colors text-[#1F1410] disabled:opacity-60"
+                  >
+                    {plaidLinkLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-[#1F1410]/50" />
+                    ) : (
+                      <Link2 className="w-4 h-4 text-[#1F1410]/50" />
+                    )}
+                    Connect Bank
+                  </button>
+                )}
               </div>
             )}
             {plaidLinkError && (

@@ -1,11 +1,14 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { getAuthenticatedUserId, createServiceClient } from '../_shared/auth.ts'
 import { plaidPost } from '../_shared/plaid.ts'
+import { getPlaidAccessToken } from '../_shared/crypto.ts'
 
 serve(async (req) => {
+  const cors = getCorsHeaders(req)
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: cors })
   }
 
   try {
@@ -16,15 +19,8 @@ serve(async (req) => {
 
     const supabase = createServiceClient()
 
-    // Look up access token
-    const { data: item, error: itemError } = await supabase
-      .from('plaid_items')
-      .select('plaid_access_token')
-      .eq('plaid_item_id', plaid_item_id)
-      .eq('user_id', userId)
-      .single()
-
-    if (itemError || !item) throw new Error('Plaid item not found')
+    // Look up and decrypt access token via RPC
+    const item = await getPlaidAccessToken(supabase, plaid_item_id, userId)
 
     // Fetch balances from Plaid
     const balanceData = await plaidPost<{
@@ -35,7 +31,7 @@ serve(async (req) => {
           available: number | null
         }
       }[]
-    }>('/accounts/balance/get', { access_token: item.plaid_access_token })
+    }>('/accounts/balance/get', { access_token: item.access_token })
 
     // Update each account's balances and insert snapshots
     let updated = 0
@@ -68,13 +64,13 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({ updated }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { headers: { ...cors, 'Content-Type': 'application/json' } },
     )
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error('plaid-sync-accounts error:', err instanceof Error ? err.message : err)
     return new Response(
-      JSON.stringify({ error: message }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      JSON.stringify({ error: 'Failed to sync account balances' }),
+      { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
     )
   }
 })

@@ -1,43 +1,49 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
-import { corsHeaders } from '../_shared/cors.ts'
-import { getAuthenticatedUserId } from '../_shared/auth.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
+import { getAuthenticatedUserId, createServiceClient } from '../_shared/auth.ts'
 import { plaidPost } from '../_shared/plaid.ts'
+import { verifyPlaidItemOwnership } from '../_shared/crypto.ts'
 
 serve(async (req) => {
+  const cors = getCorsHeaders(req)
+
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: cors })
   }
 
   try {
     const userId = await getAuthenticatedUserId(req)
     const body = await req.json().catch(() => ({}))
-    const accessToken = (body as Record<string, string | undefined>).access_token
+    const plaidItemId = (body as Record<string, string | undefined>).plaid_item_id
 
     const plaidBody: Record<string, unknown> = {
       user: { client_user_id: userId },
       client_name: 'Personal Finance App',
-      products: accessToken ? [] : ['transactions'],
+      products: plaidItemId ? [] : ['transactions'],
       country_codes: ['US'],
       language: 'en',
     }
 
-    // If access_token provided, this is a re-auth / update mode
-    if (accessToken) {
-      plaidBody.access_token = accessToken
+    // If plaid_item_id provided, this is a re-auth / update mode.
+    // Verify ownership and decrypt the access token via RPC.
+    if (plaidItemId) {
+      const supabase = createServiceClient()
+      const decryptedToken = await verifyPlaidItemOwnership(supabase, plaidItemId, userId)
+      plaidBody.access_token = decryptedToken
     }
 
     const data = await plaidPost<{ link_token: string }>('/link/token/create', plaidBody)
 
     return new Response(
       JSON.stringify({ link_token: data.link_token }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { headers: { ...cors, 'Content-Type': 'application/json' } },
     )
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error('plaid-create-link-token error:', err instanceof Error ? err.message : err)
     return new Response(
-      JSON.stringify({ error: message }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      JSON.stringify({ error: 'Failed to create link token' }),
+      { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
     )
   }
 })

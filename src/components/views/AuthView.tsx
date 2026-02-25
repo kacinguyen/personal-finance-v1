@@ -2,15 +2,12 @@ import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Mail, Lock, Loader2, AlertCircle, ArrowRight } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
-
-type AuthMode = 'sign-in' | 'sign-up'
+import { isDemoMode, DEMO_EMAIL, DEMO_PASSWORD } from '../../lib/demo'
 
 export function AuthView() {
-  const { signIn, signUp } = useAuth()
-  const [mode, setMode] = useState<AuthMode>('sign-in')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
+  const { signIn } = useAuth()
+  const [email, setEmail] = useState(isDemoMode ? DEMO_EMAIL : '')
+  const [password, setPassword] = useState(isDemoMode ? DEMO_PASSWORD : '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -23,11 +20,6 @@ export function AuthView() {
       return
     }
 
-    if (mode === 'sign-up' && password !== confirmPassword) {
-      setError('Passwords do not match')
-      return
-    }
-
     if (password.length < 6) {
       setError('Password must be at least 6 characters')
       return
@@ -36,9 +28,7 @@ export function AuthView() {
     setLoading(true)
 
     try {
-      const { error } = mode === 'sign-in'
-        ? await signIn(email, password)
-        : await signUp(email, password)
+      const { error } = await signIn(email, password)
 
       if (error) {
         setError(error.message)
@@ -46,12 +36,6 @@ export function AuthView() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const toggleMode = () => {
-    setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')
-    setError(null)
-    setConfirmPassword('')
   }
 
   return (
@@ -73,9 +57,7 @@ export function AuthView() {
             <Mail className="w-8 h-8 text-white" />
           </motion.div>
           <h1 className="text-3xl font-bold text-[#1F1410]">Pachi</h1>
-          <p className="text-[#1F1410]/60 mt-2">
-            {mode === 'sign-in' ? 'Welcome back' : 'Create your account'}
-          </p>
+          <p className="text-[#1F1410]/60 mt-2">Welcome back</p>
         </div>
 
         {/* Auth Form */}
@@ -121,29 +103,6 @@ export function AuthView() {
               </div>
             </div>
 
-            {/* Confirm Password Field (Sign Up only) */}
-            {mode === 'sign-up' && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-              >
-                <label className="block text-sm font-medium text-[#1F1410]/70 mb-1.5">
-                  Confirm Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#1F1410]/40" />
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Confirm your password"
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-[#1F1410]/10 focus:border-[#A855F7]/30 focus:outline-none focus:ring-2 focus:ring-[#A855F7]/10 transition-all placeholder:text-[#1F1410]/30"
-                  />
-                </div>
-              </motion.div>
-            )}
-
             {/* Error Message */}
             {error && (
               <motion.div
@@ -169,25 +128,30 @@ export function AuthView() {
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
                 <>
-                  <span>{mode === 'sign-in' ? 'Sign In' : 'Create Account'}</span>
+                  <span>Sign In</span>
                   <ArrowRight className="w-5 h-5" />
                 </>
               )}
             </motion.button>
           </form>
 
-          {/* Toggle Mode */}
-          <div className="mt-6 text-center">
-            <p className="text-sm text-[#1F1410]/60">
-              {mode === 'sign-in' ? "Don't have an account?" : 'Already have an account?'}
-              <button
-                onClick={toggleMode}
-                className="ml-1 font-semibold text-[#A855F7] hover:text-[#EC4899] transition-colors"
-              >
-                {mode === 'sign-in' ? 'Sign Up' : 'Sign In'}
-              </button>
-            </p>
-          </div>
+          {/* Demo Quick Login */}
+          {isDemoMode && (
+            <button
+              type="button"
+              onClick={() => {
+                setEmail(DEMO_EMAIL)
+                setPassword(DEMO_PASSWORD)
+                // Submit the form programmatically
+                const form = document.querySelector('form')
+                if (form) form.requestSubmit()
+              }}
+              className="w-full mt-3 p-3 rounded-xl border border-[#F59E0B]/30 bg-[#F59E0B]/5 text-sm font-medium text-[#F59E0B] hover:bg-[#F59E0B]/10 transition-colors"
+            >
+              Sign in as demo user
+            </button>
+          )}
+
         </motion.div>
       </motion.div>
     </div>

@@ -1,11 +1,14 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { getAuthenticatedUserId, createServiceClient } from '../_shared/auth.ts'
 import { plaidPost, mapPlaidAccountType } from '../_shared/plaid.ts'
+import { insertPlaidItem } from '../_shared/crypto.ts'
 
 serve(async (req) => {
+  const cors = getCorsHeaders(req)
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: cors })
   }
 
   try {
@@ -27,17 +30,15 @@ serve(async (req) => {
 
     const supabase = createServiceClient()
 
-    // 2. Insert plaid_items row
-    const { error: itemError } = await supabase.from('plaid_items').insert({
-      user_id: userId,
-      plaid_item_id: exchangeData.item_id,
-      plaid_access_token: exchangeData.access_token,
-      institution_name: institution.name,
-      institution_id: institution.institution_id,
+    // 2. Insert plaid_items row (access token is encrypted via RPC)
+    await insertPlaidItem(supabase, {
+      userId,
+      plaidItemId: exchangeData.item_id,
+      accessToken: exchangeData.access_token,
+      institutionName: institution.name,
+      institutionId: institution.institution_id,
       status: 'active',
     })
-
-    if (itemError) throw new Error(`plaid_items insert: ${itemError.message}`)
 
     // 3. Fetch accounts from Plaid
     const accountsData = await plaidPost<{
@@ -87,7 +88,7 @@ serve(async (req) => {
         .single()
 
       if (acctError) {
-        console.error(`Account upsert error for ${pa.account_id}:`, acctError.message)
+        console.error(`Account upsert error:`, acctError.message)
         continue
       }
 
@@ -103,13 +104,13 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({ accounts: upsertedAccounts, item_id: exchangeData.item_id }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { headers: { ...cors, 'Content-Type': 'application/json' } },
     )
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error('plaid-exchange-token error:', err instanceof Error ? err.message : err)
     return new Response(
-      JSON.stringify({ error: message }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      JSON.stringify({ error: 'Failed to exchange token and link accounts' }),
+      { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
     )
   }
 })

@@ -24,10 +24,15 @@ export function getPlaidBaseUrl(): string {
 }
 
 export function getPlaidHeaders(): Record<string, string> {
+  const clientId = Deno.env.get('PLAID_CLIENT_ID')
+  const secret = Deno.env.get('PLAID_SECRET')
+  if (!clientId || !secret) {
+    throw new Error('Missing required PLAID_CLIENT_ID or PLAID_SECRET environment variables')
+  }
   return {
     'Content-Type': 'application/json',
-    'PLAID-CLIENT-ID': Deno.env.get('PLAID_CLIENT_ID') || '',
-    'PLAID-SECRET': Deno.env.get('PLAID_SECRET') || '',
+    'PLAID-CLIENT-ID': clientId,
+    'PLAID-SECRET': secret,
   }
 }
 
@@ -61,8 +66,11 @@ export async function plaidPost<T = Record<string, unknown>>(
   body: Record<string, unknown>,
 ): Promise<T> {
   const url = `${getPlaidBaseUrl()}${endpoint}`
-  const clientId = Deno.env.get('PLAID_CLIENT_ID') || ''
-  const secret = Deno.env.get('PLAID_SECRET') || ''
+  const clientId = Deno.env.get('PLAID_CLIENT_ID')
+  const secret = Deno.env.get('PLAID_SECRET')
+  if (!clientId || !secret) {
+    throw new Error('Missing required PLAID_CLIENT_ID or PLAID_SECRET environment variables')
+  }
 
   const res = await fetch(url, {
     method: 'POST',
@@ -76,8 +84,8 @@ export async function plaidPost<T = Record<string, unknown>>(
 
   if (!res.ok) {
     const errorBody = await res.json().catch(() => ({}))
-    const msg = (errorBody as Record<string, string>).error_message || res.statusText
-    throw new Error(`Plaid API error (${endpoint}): ${msg}`)
+    console.error(`Plaid API error at ${endpoint}:`, JSON.stringify(errorBody))
+    throw new Error('External service error')
   }
 
   return res.json() as Promise<T>

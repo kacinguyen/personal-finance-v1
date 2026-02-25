@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { DemoBanner } from './components/common/DemoBanner'
 import { Sidebar } from './components/common/Sidebar'
 import { DashboardView } from './components/views/DashboardView'
 import { TransactionsView } from './components/views/TransactionsView'
@@ -40,6 +41,7 @@ export function App() {
 
   return (
     <ProtectedRoute>
+      <DemoBanner />
       <div className="flex min-h-screen bg-[#FFFBF5]">
         <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
         <main className="flex-1 lg:pl-64">{renderView()}</main>

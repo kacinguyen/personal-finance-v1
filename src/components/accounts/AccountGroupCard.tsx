@@ -90,7 +90,7 @@ export function AccountGroupCard({
             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
               {hasErrorItem && errorItem && (
                 <PlaidLinkButton
-                  accessToken={errorItem.plaid_item_id}
+                  plaidItemId={errorItem.plaid_item_id}
                   onSuccess={onPlaidSuccess}
                   label="Re-connect"
                   className="!px-2.5 !py-1 !text-xs !bg-amber-500 hover:!bg-amber-600"

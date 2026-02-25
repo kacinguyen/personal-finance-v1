@@ -1,11 +1,14 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
-import { corsHeaders } from '../_shared/cors.ts'
+import { getCorsHeaders } from '../_shared/cors.ts'
 import { getAuthenticatedUserId, createServiceClient } from '../_shared/auth.ts'
 import { plaidPost } from '../_shared/plaid.ts'
+import { getPlaidAccessToken } from '../_shared/crypto.ts'
 
 serve(async (req) => {
+  const cors = getCorsHeaders(req)
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: cors })
   }
 
   try {
@@ -16,15 +19,8 @@ serve(async (req) => {
 
     const supabase = createServiceClient()
 
-    // Look up access token + cursor
-    const { data: item, error: itemError } = await supabase
-      .from('plaid_items')
-      .select('plaid_access_token, transaction_sync_cursor, institution_name')
-      .eq('plaid_item_id', plaid_item_id)
-      .eq('user_id', userId)
-      .single()
-
-    if (itemError || !item) throw new Error('Plaid item not found')
+    // Look up and decrypt access token + cursor via RPC
+    const item = await getPlaidAccessToken(supabase, plaid_item_id, userId)
 
     // Pre-fetch user's categories and merchant rules for category resolution
     const { data: userCategories } = await supabase
@@ -52,7 +48,7 @@ serve(async (req) => {
 
     while (hasMore) {
       const syncBody: Record<string, unknown> = {
-        access_token: item.plaid_access_token,
+        access_token: item.access_token,
       }
       if (cursor) syncBody.cursor = cursor
 
@@ -125,13 +121,13 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({ added, modified, removed }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { headers: { ...cors, 'Content-Type': 'application/json' } },
     )
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error('plaid-sync-transactions error:', err instanceof Error ? err.message : err)
     return new Response(
-      JSON.stringify({ error: message }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      JSON.stringify({ error: 'Failed to sync transactions' }),
+      { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
     )
   }
 })
