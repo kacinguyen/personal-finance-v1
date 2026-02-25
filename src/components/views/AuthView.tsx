@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Mail, Lock, Loader2, AlertCircle, ArrowRight } from 'lucide-react'
+import { Mail, Wallet, Lock, Loader2, AlertCircle, ArrowRight } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { isDemoMode, DEMO_EMAIL, DEMO_PASSWORD } from '../../lib/demo'
 
@@ -54,10 +54,10 @@ export function AuthView() {
             transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
             className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#14B8A6] to-[#10B981] flex items-center justify-center mx-auto mb-4"
           >
-            <Mail className="w-8 h-8 text-white" />
+            <Wallet className="w-8 h-8 text-white" />
           </motion.div>
           <h1 className="text-3xl font-bold text-[#1F1410]">Pachi</h1>
-          <p className="text-[#1F1410]/60 mt-2">Welcome back</p>
+          <p className="text-[#1F1410]/40 mt-1 text-sm tracking-wide">Personal Finance Tracker</p>
         </div>
 
         {/* Auth Form */}
@@ -81,7 +81,7 @@ export function AuthView() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-[#1F1410]/10 focus:border-[#A855F7]/30 focus:outline-none focus:ring-2 focus:ring-[#A855F7]/10 transition-all placeholder:text-[#1F1410]/30"
+                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-[#1F1410]/10 focus:border-[#14B8A6]/30 focus:outline-none focus:ring-2 focus:ring-[#14B8A6]/10 transition-all placeholder:text-[#1F1410]/30"
                 />
               </div>
             </div>
@@ -98,7 +98,7 @@ export function AuthView() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-[#1F1410]/10 focus:border-[#A855F7]/30 focus:outline-none focus:ring-2 focus:ring-[#A855F7]/10 transition-all placeholder:text-[#1F1410]/30"
+                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-[#1F1410]/10 focus:border-[#14B8A6]/30 focus:outline-none focus:ring-2 focus:ring-[#14B8A6]/10 transition-all placeholder:text-[#1F1410]/30"
                 />
               </div>
             </div>
@@ -121,8 +121,7 @@ export function AuthView() {
               whileTap={{ scale: 0.98 }}
               type="submit"
               disabled={loading}
-              className="w-full p-4 rounded-xl bg-gradient-to-r from-[#A855F7] to-[#EC4899] text-white font-semibold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ boxShadow: '0 2px 8px rgba(168, 85, 247, 0.3)' }}
+              className="w-full p-4 rounded-xl bg-[#1F1410] text-white font-semibold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
