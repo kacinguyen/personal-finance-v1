@@ -73,6 +73,15 @@ export function DashboardView() {
     )
   }, [dbCategories])
 
+  // Category IDs that count as income
+  const incomeCategoryIds = useMemo(() => {
+    return new Set(
+      dbCategories
+        .filter(c => c.category_type === 'income')
+        .map(c => c.id)
+    )
+  }, [dbCategories])
+
   // Top 5 spending categories
   const topCategories = useMemo(() => {
     const expenseTypes = new Set(['need', 'want', 'savings_funded'])
@@ -164,29 +173,21 @@ export function DashboardView() {
 
   // Fetch yearly data for chart
   const fetchYearlyData = useCallback(async () => {
+    // Wait for categories to load before fetching — filtering requires category IDs
+    if (dbCategories.length === 0) return
+
     const startOfYear = `${chartYear}-01-01`
     const endOfYear = `${chartYear}-12-31`
 
-    // Fetch all transactions for the year
+    // Fetch all transactions for the year (include category_id for filtering)
     const { data: transactions, error: txError } = await supabase
       .from('transactions')
-      .select('amount, date')
+      .select('amount, date, category_id')
       .gte('date', startOfYear)
       .lte('date', endOfYear)
 
     if (txError) {
       console.error('Error fetching yearly transactions:', txError)
-    }
-
-    // Fetch all paystubs for the year
-    const { data: paystubs, error: payError } = await supabase
-      .from('paystubs')
-      .select('net_pay, pay_date')
-      .gte('pay_date', startOfYear)
-      .lte('pay_date', endOfYear)
-
-    if (payError) {
-      console.error('Error fetching yearly paystubs:', payError)
     }
 
     // Fetch current budget (used for all months)
@@ -201,18 +202,19 @@ export function DashboardView() {
 
     const monthlyBudget = budgets?.reduce((sum, b) => sum + Number(b.monthly_limit), 0) || 0
 
-    // Group transactions by month
+    // Group transactions by month (excluding income & transfer categories)
     const spentByMonth: Record<number, number> = {}
-    transactions?.forEach((t) => {
-      const month = new Date(t.date).getMonth()
-      spentByMonth[month] = (spentByMonth[month] || 0) + Math.abs(Number(t.amount))
-    })
-
-    // Group income by month
+    // Group income by month (income-category transactions only)
     const incomeByMonth: Record<number, number> = {}
-    paystubs?.forEach((p) => {
-      const month = new Date(p.pay_date).getMonth()
-      incomeByMonth[month] = (incomeByMonth[month] || 0) + Number(p.net_pay)
+
+    transactions?.forEach((t) => {
+      // Parse date as local (not UTC) to avoid timezone-shifting months
+      const month = new Date(t.date + 'T00:00:00').getMonth()
+      if (t.category_id && incomeCategoryIds.has(t.category_id)) {
+        incomeByMonth[month] = (incomeByMonth[month] || 0) + Math.abs(Number(t.amount))
+      } else if (!t.category_id || !excludedCategoryIds.has(t.category_id)) {
+        spentByMonth[month] = (spentByMonth[month] || 0) + Math.abs(Number(t.amount))
+      }
     })
 
     // Build chart data for all 12 months
@@ -234,7 +236,7 @@ export function DashboardView() {
     })
 
     setYearlyChartData(chartData)
-  }, [chartYear])
+  }, [chartYear, excludedCategoryIds, incomeCategoryIds, dbCategories.length])
 
   // Fetch data when selected month changes
   useEffect(() => {
@@ -555,21 +557,6 @@ export function DashboardView() {
             </ResponsiveContainer>
           </div>
 
-          {/* Legend Summary */}
-          <div className="flex flex-wrap gap-6 mt-4 pt-4 border-t border-[#1F1410]/5">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#1F1410]/10" />
-              <span className="text-xs text-[#1F1410]/60">Budget (Monthly Target)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS.spent }} />
-              <span className="text-xs text-[#1F1410]/60">Actual Spending</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS.income }} />
-              <span className="text-xs text-[#1F1410]/60">Income Trend</span>
-            </div>
-          </div>
         </motion.div>
 
       </div>

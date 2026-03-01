@@ -13,7 +13,7 @@ export const STATUS_COLORS = {
 // Chart colors
 export const CHART_COLORS = {
   spent: '#F59E0B',      // Amber
-  budget: 'rgba(31, 20, 16, 0.1)',
+  budget: 'rgba(245, 158, 11, 0.2)',  // Amber at low opacity
   income: '#10B981',     // Green
 } as const
 
