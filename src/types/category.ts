@@ -265,6 +265,15 @@ export const DEFAULT_CATEGORIES: DefaultCategoryDef[] = [
     is_system: true,
     is_active: true,
   },
+  {
+    name: 'Pending Reimbursement',
+    icon: 'UserCheck',
+    color: '#F59E0B',
+    category_type: 'transfer',
+    is_system: true,
+    is_active: true,
+    is_budgetable: false,
+  },
 ]
 
 /**

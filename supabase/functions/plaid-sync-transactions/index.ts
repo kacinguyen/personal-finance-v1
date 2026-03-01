@@ -81,6 +81,14 @@ serve(async (req) => {
 
       // Process modified transactions
       for (const tx of syncData.modified) {
+        // Check if the transaction has a user-modified split amount
+        const { data: existing } = await supabase
+          .from('transactions')
+          .select('amount_modified_by_split')
+          .eq('plaid_transaction_id', tx.transaction_id)
+          .eq('user_id', userId)
+          .maybeSingle()
+
         const mapped = mapTransaction(tx, userId, item.institution_name)
         const resolvedCategoryId = resolveCategoryId(
           mapped.merchant,
@@ -92,10 +100,22 @@ serve(async (req) => {
           mapped.category_id = resolvedCategoryId
           mapped.needs_review = false
         }
-        const { error } = await supabase
-          .from('transactions')
-          .upsert(mapped, { onConflict: 'plaid_transaction_id' })
-        if (!error) modified++
+
+        // If amount was modified by a shared split, preserve the user's share
+        if (existing?.amount_modified_by_split) {
+          const { amount: _skipAmount, ...mappedWithoutAmount } = mapped
+          const { error } = await supabase
+            .from('transactions')
+            .update(mappedWithoutAmount)
+            .eq('plaid_transaction_id', tx.transaction_id)
+            .eq('user_id', userId)
+          if (!error) modified++
+        } else {
+          const { error } = await supabase
+            .from('transactions')
+            .upsert(mapped, { onConflict: 'plaid_transaction_id' })
+          if (!error) modified++
+        }
       }
 
       // Process removed transactions

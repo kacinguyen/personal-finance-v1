@@ -109,6 +109,11 @@ export function IncomeView() {
     [incomeCategories]
   )
 
+  const reimbursementCategoryId = useMemo(
+    () => incomeCategories.find(c => c.name === 'Reimbursements')?.id,
+    [incomeCategories]
+  )
+
   const [incomeTransactions, setIncomeTransactions] = useState<Transaction[]>([])
   const [loadingIncomeTransactions, setLoadingIncomeTransactions] = useState(false)
   const [prevMonthSalaryTotal, setPrevMonthSalaryTotal] = useState(0)
@@ -162,6 +167,36 @@ export function IncomeView() {
   useEffect(() => {
     fetchIncomeTransactions()
   }, [fetchIncomeTransactions])
+
+  // Fetch reimbursement transactions for the full year (for the chart)
+  const [reimbursementTransactions, setReimbursementTransactions] = useState<Transaction[]>([])
+
+  const fetchReimbursementTransactions = useCallback(async () => {
+    if (!reimbursementCategoryId) {
+      setReimbursementTransactions([])
+      return
+    }
+    const chartYear = selectedMonth.getFullYear()
+    const startDate = `${chartYear - 1}-01-01`
+    const endDate = `${chartYear}-12-31`
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('category_id', reimbursementCategoryId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching reimbursement transactions:', error)
+    } else if (data) {
+      setReimbursementTransactions(data as Transaction[])
+    }
+  }, [reimbursementCategoryId, selectedMonth])
+
+  useEffect(() => {
+    fetchReimbursementTransactions()
+  }, [fetchReimbursementTransactions])
 
   // Split income transactions into salary vs other
   const { salaryTransactions, salaryTransactionIncome, otherIncome } = useMemo(() => {
@@ -393,7 +428,7 @@ export function IncomeView() {
         </motion.div>
 
         {/* Yearly Income Chart — Full Width */}
-        <YearlyIncomeChart paystubs={paystubs} selectedMonth={selectedMonth} />
+        <YearlyIncomeChart paystubs={paystubs} selectedMonth={selectedMonth} reimbursementTransactions={reimbursementTransactions} />
 
         {/* Two Column Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -17,7 +17,9 @@ import {
   Check,
   Wand2,
   X,
+  Users,
 } from 'lucide-react'
+import type { PendingReimbursement } from '../../types/pendingReimbursement'
 import type { MatchType } from '../../hooks/useMerchantRules'
 import { SHADOWS } from '../../lib/styles'
 import type { UITransaction } from '../views/TransactionsView'
@@ -53,6 +55,8 @@ type TransactionDetailPanelProps = {
   onCreateMerchantRule?: (pattern: string, matchType: MatchType, categoryId: string) => Promise<boolean>
   hasRuleForMerchant?: (merchant: string) => boolean
   onNavigateToRules?: () => void
+  onResolveReimbursement?: () => void
+  pendingReimbursement?: PendingReimbursement | null
 }
 
 type CategoryTab = 'expense' | 'income' | 'transfer'
@@ -321,6 +325,8 @@ export function TransactionDetailPanel({
   onCreateMerchantRule,
   hasRuleForMerchant,
   onNavigateToRules,
+  onResolveReimbursement,
+  pendingReimbursement,
 }: TransactionDetailPanelProps) {
   const [editingField, setEditingField] = useState<EditingField>(null)
   const [editValue, setEditValue] = useState('')
@@ -844,6 +850,45 @@ export function TransactionDetailPanel({
                 )}
               </div>
             </div>
+
+            {/* Pending Reimbursement */}
+            {pendingReimbursement && (
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-[#F59E0B]/10 flex items-center justify-center flex-shrink-0">
+                  <Users className="w-4 h-4 text-[#F59E0B]" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-[#1F1410]/50 uppercase tracking-wide">Shared Split</p>
+                  {pendingReimbursement.status === 'pending' ? (
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-[#F59E0B]/10 text-[#F59E0B]">
+                        ${pendingReimbursement.others_share.toFixed(2)} pending
+                      </span>
+                      {onResolveReimbursement && (
+                        <button
+                          onClick={onResolveReimbursement}
+                          className="text-xs font-medium text-[#F59E0B] hover:text-[#D97706] transition-colors"
+                        >
+                          Resolve
+                        </button>
+                      )}
+                    </div>
+                  ) : pendingReimbursement.status === 'resolved' ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-[#10B981]/10 text-[#10B981] mt-1">
+                      <Check className="w-3 h-3" />
+                      Reimbursed
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-[#1F1410]/5 text-[#1F1410]/40 mt-1">
+                      Written off
+                    </span>
+                  )}
+                  {pendingReimbursement.notes && (
+                    <p className="text-xs text-[#1F1410]/40 mt-1">{pendingReimbursement.notes}</p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Splits */}
             {selectedTransaction.splits.length > 0 && (

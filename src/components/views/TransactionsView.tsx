@@ -11,6 +11,9 @@ import type { UICategory } from '../../types/category'
 import { dbCategoryToUI } from '../../lib/categoryUtils'
 import { AddTransactionModal, TransactionFormData } from '../modals/AddTransactionModal'
 import { SplitTransactionModal } from '../modals/SplitTransactionModal'
+import { SplitWithOthersModal } from '../modals/SplitWithOthersModal'
+import { ResolveReimbursementModal } from '../modals/ResolveReimbursementModal'
+import type { PendingReimbursement } from '../../types/pendingReimbursement'
 import { DuplicateReconciliationModal } from '../modals/DuplicateReconciliationModal'
 import { importCSVFiles } from '../../lib/csvImport'
 import { detectDuplicates, detectTransferPairs } from '../../lib/duplicateDetection'
@@ -134,6 +137,9 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
   const [accountTypeMap, setAccountTypeMap] = useState<AccountTypeMap>(new Map())
   const [syncing, setSyncing] = useState(false)
   const [goals, setGoals] = useState<{ id: string; name: string; color: string }[]>([])
+  const [isSplitWithOthersModalOpen, setIsSplitWithOthersModalOpen] = useState(false)
+  const [isResolveReimbursementModalOpen, setIsResolveReimbursementModalOpen] = useState(false)
+  const [pendingReimbursements, setPendingReimbursements] = useState<PendingReimbursement[]>([])
 
   // Convert DB categories to UI categories with resolved icons (all categories for filtering)
   const allUiCategories = useMemo<UICategory[]>(() => {
@@ -252,12 +258,18 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
 
     setRawTransactions(txData as DBTransaction[])
 
-    // Fetch all splits for these transactions
+    // Fetch all splits and pending reimbursements for these transactions
     const txIds = txData.map(tx => tx.id)
-    const { data: splitsData } = await supabase
-      .from('transaction_splits')
-      .select('*')
-      .in('transaction_id', txIds)
+    const [{ data: splitsData }, { data: reimbursementsData }] = await Promise.all([
+      supabase
+        .from('transaction_splits')
+        .select('*')
+        .in('transaction_id', txIds),
+      supabase
+        .from('pending_reimbursements')
+        .select('*')
+        .in('transaction_id', txIds),
+    ])
 
     // Group splits by transaction_id
     const splitsByTxId = new Map<string, TransactionSplit[]>()
@@ -267,6 +279,13 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
         existing.push(split)
         splitsByTxId.set(split.transaction_id, existing)
       }
+    }
+
+    // Store pending reimbursements
+    if (reimbursementsData) {
+      setPendingReimbursements(reimbursementsData as PendingReimbursement[])
+    } else {
+      setPendingReimbursements([])
     }
 
     // Map transactions with their splits
@@ -672,6 +691,166 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
     await fetchTransactions()
   }
 
+  // Get pending reimbursement for the selected transaction
+  const selectedReimbursement = useMemo(() => {
+    if (!selectedTransaction) return null
+    return pendingReimbursements.find(r => r.transaction_id === selectedTransaction.id) || null
+  }, [selectedTransaction, pendingReimbursements])
+
+  // Get existing split data for the SplitWithOthersModal
+  const existingSharedSplit = useMemo(() => {
+    if (!selectedReimbursement) return null
+    return {
+      userShare: selectedReimbursement.user_share,
+      othersShare: selectedReimbursement.others_share,
+      splitPercentage: selectedReimbursement.split_percentage,
+      notes: selectedReimbursement.notes,
+    }
+  }, [selectedReimbursement])
+
+  const handleSaveSharedSplit = async (
+    userShare: number,
+    othersShare: number,
+    splitPercentage: number | null,
+    notes: string | null,
+  ) => {
+    if (!selectedTransaction || !userId) return
+
+    const originalAmount = selectedReimbursement
+      ? selectedReimbursement.original_amount
+      : selectedTransaction.amount
+
+    // 1. Update transaction amount to user's share
+    const { error: txError } = await supabase
+      .from('transactions')
+      .update({ amount: userShare, amount_modified_by_split: true })
+      .eq('id', selectedTransaction.id)
+
+    if (txError) {
+      console.error('Error updating transaction amount:', txError)
+      throw new Error('Failed to update transaction')
+    }
+
+    // 2. Upsert pending_reimbursements row
+    if (selectedReimbursement) {
+      const { error: rError } = await supabase
+        .from('pending_reimbursements')
+        .update({
+          original_amount: originalAmount,
+          user_share: userShare,
+          others_share: othersShare,
+          split_percentage: splitPercentage,
+          notes,
+        })
+        .eq('id', selectedReimbursement.id)
+
+      if (rError) {
+        console.error('Error updating reimbursement:', rError)
+        throw new Error('Failed to update reimbursement')
+      }
+    } else {
+      const { error: rError } = await supabase
+        .from('pending_reimbursements')
+        .insert({
+          user_id: userId,
+          transaction_id: selectedTransaction.id,
+          original_amount: originalAmount,
+          user_share: userShare,
+          others_share: othersShare,
+          split_percentage: splitPercentage,
+          status: 'pending',
+          resolved_transaction_id: null,
+          notes,
+        })
+
+      if (rError) {
+        console.error('Error inserting reimbursement:', rError)
+        throw new Error('Failed to create reimbursement')
+      }
+    }
+
+    await fetchTransactions()
+  }
+
+  const handleUndoSharedSplit = async () => {
+    if (!selectedTransaction || !selectedReimbursement) return
+
+    // 1. Restore transaction amount from original_amount
+    const { error: txError } = await supabase
+      .from('transactions')
+      .update({
+        amount: selectedReimbursement.original_amount,
+        amount_modified_by_split: false,
+      })
+      .eq('id', selectedTransaction.id)
+
+    if (txError) {
+      console.error('Error restoring transaction amount:', txError)
+      return
+    }
+
+    // 2. Delete pending_reimbursements row
+    const { error: rError } = await supabase
+      .from('pending_reimbursements')
+      .delete()
+      .eq('id', selectedReimbursement.id)
+
+    if (rError) {
+      console.error('Error deleting reimbursement:', rError)
+    }
+
+    await fetchTransactions()
+  }
+
+  const handleResolveReimbursement = async (reimbursementId: string, resolvedTransactionId: string | null) => {
+    const { error } = await supabase
+      .from('pending_reimbursements')
+      .update({
+        status: 'resolved',
+        resolved_transaction_id: resolvedTransactionId,
+        resolved_at: new Date().toISOString(),
+      })
+      .eq('id', reimbursementId)
+
+    if (error) {
+      console.error('Error resolving reimbursement:', error)
+      throw new Error('Failed to resolve reimbursement')
+    }
+
+    await fetchTransactions()
+  }
+
+  const handleWriteOffReimbursement = async (reimbursementId: string) => {
+    const { error } = await supabase
+      .from('pending_reimbursements')
+      .update({
+        status: 'written_off',
+        resolved_at: new Date().toISOString(),
+      })
+      .eq('id', reimbursementId)
+
+    if (error) {
+      console.error('Error writing off reimbursement:', error)
+      throw new Error('Failed to write off reimbursement')
+    }
+
+    await fetchTransactions()
+  }
+
+  // Incoming transactions for matching (positive amounts from last 60 days)
+  const incomingTransactions = useMemo(() => {
+    return transactions
+      .filter(tx => tx.amount > 0)
+      .map(tx => ({
+        id: tx.id,
+        merchant: tx.merchant,
+        amount: tx.amount,
+        date: tx.rawDate,
+        source: tx.source,
+        category: tx.category,
+      }))
+  }, [transactions])
+
   const toggleFiltersPanel = useCallback(() => {
     if (!showFiltersPanel && filterButtonRef.current) {
       const rect = filterButtonRef.current.getBoundingClientRect()
@@ -966,12 +1145,20 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
             onEdit={handleEditSelectedTransaction}
             onDelete={handleDeleteSelectedTransaction}
             onMarkAsReviewed={handleMarkAsReviewed}
-            onSplit={() => setIsSplitModalOpen(true)}
+            onSplit={() => {
+              if (selectedReimbursement) {
+                setIsSplitWithOthersModalOpen(true)
+              } else {
+                setIsSplitModalOpen(true)
+              }
+            }}
             onReconcile={() => setIsReconcileModalOpen(true)}
             onFieldSave={handleFieldSave}
             onCreateMerchantRule={handleCreateMerchantRule}
             hasRuleForMerchant={hasRuleForMerchant}
             onNavigateToRules={() => onNavigate?.('profile')}
+            onResolveReimbursement={() => setIsResolveReimbursementModalOpen(true)}
+            pendingReimbursement={selectedReimbursement}
           />
         </motion.div>
       </div>
@@ -1006,8 +1193,39 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
             category_name: s.category,
             notes: s.notes,
           }))}
+          onSplitWithOthers={selectedTransaction.type === 'expense' ? () => {
+            setIsSplitModalOpen(false)
+            setIsSplitWithOthersModalOpen(true)
+          } : undefined}
         />
       )}
+
+      {/* Split with Others Modal */}
+      {selectedTransaction && (
+        <SplitWithOthersModal
+          isOpen={isSplitWithOthersModalOpen}
+          onClose={() => setIsSplitWithOthersModalOpen(false)}
+          onSave={handleSaveSharedSplit}
+          onRemove={selectedReimbursement ? handleUndoSharedSplit : undefined}
+          transactionAmount={selectedReimbursement
+            ? selectedReimbursement.original_amount
+            : selectedTransaction.amount}
+          transactionMerchant={selectedTransaction.merchant}
+          existingSplit={existingSharedSplit}
+        />
+      )}
+
+      {/* Resolve Reimbursement Modal */}
+      <ResolveReimbursementModal
+        isOpen={isResolveReimbursementModalOpen}
+        onClose={() => setIsResolveReimbursementModalOpen(false)}
+        reimbursement={selectedReimbursement}
+        originalMerchant={selectedTransaction?.merchant || ''}
+        originalDate={selectedTransaction?.rawDate || ''}
+        incomingTransactions={incomingTransactions}
+        onResolve={handleResolveReimbursement}
+        onWriteOff={handleWriteOffReimbursement}
+      />
 
       {/* Duplicate Reconciliation Modal */}
       <DuplicateReconciliationModal

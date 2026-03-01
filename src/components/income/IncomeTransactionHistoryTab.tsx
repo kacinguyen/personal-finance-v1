@@ -156,13 +156,14 @@ export function IncomeTransactionHistoryTab({
 
       {/* Salary Transactions */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold text-[#1F1410]/70">
-            Salary Transactions
-            <span className="ml-2 text-xs font-normal text-[#1F1410]/40">
-              {salaryTransactions.length} in {formatMonth(selectedMonth)}
-            </span>
-          </p>
+        <div className="flex items-center gap-2.5 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center">
+            <Briefcase className="w-4 h-4 text-[#10B981]" />
+          </div>
+          <h3 className="text-sm font-bold text-[#1F1410]">Salary</h3>
+          <span className="text-xs text-[#1F1410]/40">
+            {salaryTransactions.length} in {formatMonth(selectedMonth)}
+          </span>
         </div>
 
         {loading ? (
@@ -174,7 +175,7 @@ export function IncomeTransactionHistoryTab({
             No salary transactions for this month
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1">
             {salaryTransactions.map((tx) => {
               const txDate = new Date(tx.date + 'T00:00:00').toLocaleDateString(
                 'en-US',
@@ -183,30 +184,19 @@ export function IncomeTransactionHistoryTab({
               const matchedPaystub = findMatchingPaystub(tx.date, paystubs)
 
               return (
-                <div key={tx.id}>
-                  {/* Transaction row */}
-                  <div className="flex items-center gap-3 py-2">
-                    <div
-                      className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: '#10B98115' }}
-                    >
-                      <Briefcase className="w-4 h-4" style={{ color: '#10B981' }} />
-                    </div>
-                    <div className="flex-1 flex items-center justify-between">
-                      <div>
-                        <span className="text-sm font-medium text-[#1F1410]">
-                          {tx.merchant || 'Salary'}
-                        </span>
-                        <span className="ml-2 text-xs text-[#1F1410]/40">{txDate}</span>
-                      </div>
-                      <span className="text-sm font-bold text-[#1F1410]">
-                        ${Math.abs(tx.amount).toLocaleString()}
+                <div key={tx.id} className="py-2 border-b border-[#1F1410]/5 last:border-0">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-sm font-medium text-[#1F1410]">
+                        {tx.merchant || 'Salary'}
                       </span>
+                      <span className="ml-2 text-xs text-[#1F1410]/40">{txDate}</span>
                     </div>
+                    <span className="text-sm font-bold text-[#1F1410]">
+                      ${Math.abs(tx.amount).toLocaleString()}
+                    </span>
                   </div>
-
-                  {/* Paystub match indicator */}
-                  <div className="ml-12 mb-2">
+                  <div className="mt-1">
                     {matchedPaystub ? (
                       <div className="flex items-center gap-1.5 text-xs text-[#10B981]">
                         <CheckCircle className="w-3.5 h-3.5" />

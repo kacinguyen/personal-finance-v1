@@ -3,6 +3,7 @@
  */
 
 const ALLOWED_ORIGINS = [
+  'https://pachi-personal-finance-tracker.vercel.app',
   'https://personal-finance-app-v1-puce.vercel.app',
   'https://personal-finance-app-v1-kacinguyens-projects.vercel.app',
   'http://localhost:5173',

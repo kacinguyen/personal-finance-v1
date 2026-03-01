@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Plus, Trash2, DollarSign, AlertCircle, Tag, ChevronDown } from 'lucide-react'
+import { X, Plus, Trash2, DollarSign, AlertCircle, Tag, ChevronDown, Users } from 'lucide-react'
 import type { UICategory } from '../../types/category'
 import type { UISplit } from '../../types/transactionSplit'
 
@@ -17,6 +17,7 @@ type SplitTransactionModalProps = {
   transactionMerchant: string
   categories: UICategory[]
   existingSplits?: UISplit[]
+  onSplitWithOthers?: () => void
 }
 
 export function SplitTransactionModal({
@@ -27,6 +28,7 @@ export function SplitTransactionModal({
   transactionMerchant,
   categories,
   existingSplits,
+  onSplitWithOthers,
 }: SplitTransactionModalProps) {
   const [splits, setSplits] = useState<UISplit[]>([])
   const [saving, setSaving] = useState(false)
@@ -400,6 +402,18 @@ export function SplitTransactionModal({
                       className="px-4 py-2.5 rounded-xl font-medium text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
                     >
                       Remove Splits
+                    </button>
+                  )}
+                  {onSplitWithOthers && (
+                    <button
+                      onClick={() => {
+                        onClose()
+                        onSplitWithOthers()
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-medium text-[#F59E0B] hover:bg-[#F59E0B]/5 transition-colors"
+                    >
+                      <Users className="w-4 h-4" />
+                      Split with Others
                     </button>
                   )}
                   <div className="flex-1" />
