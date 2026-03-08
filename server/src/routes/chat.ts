@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { z } from 'zod'
 import { streamText, type UIMessage, convertToModelMessages, stepCountIs } from 'ai'
 import { getModel, MODEL_CONFIG } from '../llm/provider.js'
 import { createServiceClient } from '../supabase/client.js'
@@ -6,15 +7,34 @@ import { buildFinancialSnapshot } from '../context/financial-snapshot.js'
 import { buildSystemPrompt } from '../prompts/financial-advisor.js'
 import { createTools } from '../tools/index.js'
 
+const messagePartSchema = z.object({
+  type: z.string(),
+  text: z.string().optional(),
+}).passthrough()
+
+const chatMessageSchema = z.object({
+  id: z.string(),
+  role: z.enum(['user', 'assistant', 'system']),
+  content: z.string().optional(),
+  parts: z.array(messagePartSchema).optional(),
+}).passthrough()
+
+const chatRequestSchema = z.object({
+  messages: z.array(chatMessageSchema).min(1, 'At least one message is required'),
+})
+
 export async function chatRoutes(app: FastifyInstance) {
   app.post('/api/chat', async (request, reply) => {
-    const { messages } = request.body as {
-      messages: UIMessage[]
+    const parsed = chatRequestSchema.safeParse(request.body)
+
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: 'Invalid request body',
+        details: parsed.error.issues.map(i => i.message),
+      })
     }
 
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return reply.status(400).send({ error: 'messages array is required' })
-    }
+    const { messages } = parsed.data as { messages: UIMessage[] }
 
     const userId = request.userId
     const supabase = createServiceClient()
