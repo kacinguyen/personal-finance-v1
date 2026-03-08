@@ -10,11 +10,14 @@ import { ProfileView } from './components/views/ProfileView'
 import { BudgetView } from './components/views/BudgetView'
 import { AccountsView } from './components/views/AccountsView'
 import { ProtectedRoute } from './components/common/ProtectedRoute'
+import { ChatButton } from './components/chat/ChatButton'
+import { ChatPanel } from './components/chat/ChatPanel'
 
 type Tab = 'dashboard' | 'transactions' | 'income' | 'expenses' | 'savings' | 'budget' | 'accounts' | 'profile'
 
 export function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard')
+  const [chatOpen, setChatOpen] = useState(false)
 
   const renderView = () => {
     switch (activeTab) {
@@ -46,6 +49,8 @@ export function App() {
         <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
         <main className="flex-1 lg:pl-64">{renderView()}</main>
       </div>
+      <ChatButton isOpen={chatOpen} onClick={() => setChatOpen(!chatOpen)} />
+      <ChatPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </ProtectedRoute>
   )
 }

@@ -1,0 +1,58 @@
+import type { FastifyInstance } from 'fastify'
+import { streamText, type UIMessage, convertToModelMessages, stepCountIs } from 'ai'
+import { getModel, MODEL_CONFIG } from '../llm/provider.js'
+import { createServiceClient } from '../supabase/client.js'
+import { buildFinancialSnapshot } from '../context/financial-snapshot.js'
+import { buildSystemPrompt } from '../prompts/financial-advisor.js'
+import { createTools } from '../tools/index.js'
+
+export async function chatRoutes(app: FastifyInstance) {
+  app.post('/api/chat', async (request, reply) => {
+    const { messages } = request.body as {
+      messages: UIMessage[]
+    }
+
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return reply.status(400).send({ error: 'messages array is required' })
+    }
+
+    const userId = request.userId
+    const supabase = createServiceClient()
+
+    // Build financial context
+    const snapshot = await buildFinancialSnapshot(supabase, userId)
+    const systemPrompt = buildSystemPrompt(snapshot)
+
+    // Create tools scoped to this user
+    const tools = createTools(supabase, userId)
+
+    const result = streamText({
+      model: getModel(),
+      system: systemPrompt,
+      messages: await convertToModelMessages(messages),
+      tools,
+      stopWhen: stepCountIs(5),
+      temperature: MODEL_CONFIG.temperature,
+      maxOutputTokens: MODEL_CONFIG.maxTokens,
+    })
+
+    const response = result.toUIMessageStreamResponse()
+
+    reply.raw.writeHead(
+      response.status || 200,
+      Object.fromEntries(response.headers.entries())
+    )
+
+    if (response.body) {
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        reply.raw.write(decoder.decode(value, { stream: true }))
+      }
+    }
+
+    reply.raw.end()
+  })
+}
