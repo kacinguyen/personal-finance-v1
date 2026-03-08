@@ -1,10 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
-  Calendar,
   ChevronLeft,
   ChevronRight,
-  TrendingUp,
   BarChart3,
   CircleDollarSign,
 } from 'lucide-react'
@@ -55,14 +53,11 @@ export function DashboardView() {
   const { categories: dbCategories, findCategoryById } = useCategories()
   const { categorySummaries } = useMonthlySummary(selectedMonth)
 
-  // RSU vest state
-  const [nextVest, setNextVest] = useState<{
-    vest_date: string
-    shares_vested: number
-    vest_price: number
-    total_gross_value: number
-    company_name: string | null
-  } | null>(null)
+  // Average monthly spending (trailing 6 months)
+  const [avgMonthlySpending, setAvgMonthlySpending] = useState<number | null>(null)
+  const [topCategory, setTopCategory] = useState<{ name: string; count: number } | null>(null)
+  // Largest outflow transaction this month
+  const [largestOutflow, setLargestOutflow] = useState<{ name: string; amount: number } | null>(null)
 
   // Category IDs to exclude from spending (income + transfers)
   const excludedCategoryIds = useMemo(() => {
@@ -99,26 +94,53 @@ export function DashboardView() {
   }, [categorySummaries, findCategoryById])
 
 
-  // Fetch upcoming RSU vest
+  // Fetch average monthly spending (trailing 6 completed months)
   useEffect(() => {
-    const fetchNextVest = async () => {
-      const today = new Date().toISOString().split('T')[0]
-      const { data, error } = await supabase
-        .from('rsu_vests')
-        .select('vest_date, shares_vested, vest_price, total_gross_value, company_name')
-        .gte('vest_date', today)
-        .order('vest_date', { ascending: true })
-        .limit(1)
-        .maybeSingle()
+    const fetchAvgMonthly = async () => {
+      if (dbCategories.length === 0) return
 
-      if (!error && data) {
-        setNextVest(data)
-      } else {
-        setNextVest(null)
+      const now = new Date()
+      // Go back 6 full months from the start of the current month
+      const end = new Date(now.getFullYear(), now.getMonth(), 0) // last day of prev month
+      const start = new Date(now.getFullYear(), now.getMonth() - 6, 1) // first day 6 months ago
+
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('amount, date, category_id')
+        .gte('date', start.toISOString().split('T')[0])
+        .lte('date', end.toISOString().split('T')[0])
+
+      if (error) {
+        console.error('Error fetching avg monthly spending:', error)
+        return
+      }
+
+      if (data && data.length > 0) {
+        // Group by month, excluding income/transfer categories
+        const monthTotals = new Map<string, number>()
+        const categoryCounts = new Map<string, number>()
+        for (const t of data) {
+          if (t.category_id && excludedCategoryIds.has(t.category_id)) continue
+          const monthKey = t.date.slice(0, 7)
+          monthTotals.set(monthKey, (monthTotals.get(monthKey) ?? 0) + Math.abs(Number(t.amount)))
+          if (t.category_id) {
+            categoryCounts.set(t.category_id, (categoryCounts.get(t.category_id) ?? 0) + 1)
+          }
+        }
+        const months = Array.from(monthTotals.values())
+        if (months.length > 0) {
+          setAvgMonthlySpending(months.reduce((a, b) => a + b, 0) / months.length)
+        }
+        // Find most frequent category
+        if (categoryCounts.size > 0) {
+          const [topId, topCount] = Array.from(categoryCounts.entries()).reduce((a, b) => b[1] > a[1] ? b : a)
+          const cat = findCategoryById(topId)
+          setTopCategory({ name: cat?.name ?? 'Unknown', count: topCount })
+        }
       }
     }
-    fetchNextVest()
-  }, [])
+    fetchAvgMonthly()
+  }, [dbCategories, excludedCategoryIds])
 
   // Available years for the chart (current year and 2 previous)
   const currentYear = new Date().getFullYear()
@@ -142,17 +164,26 @@ export function DashboardView() {
 
     const { data, error } = await supabase
       .from('transactions')
-      .select('amount, category_id')
+      .select('amount, category_id, merchant')
       .gte('date', startOfMonth)
       .lte('date', endOfMonth)
 
     if (error) {
       console.error('Error fetching transactions:', error)
     } else if (data) {
-      const total = data
-        .filter(t => !t.category_id || !excludedCategoryIds.has(t.category_id))
-        .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
+      const expenses = data.filter(t => !t.category_id || !excludedCategoryIds.has(t.category_id))
+      const total = expenses.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
       setTotalSpent(total)
+
+      // Find largest outflow
+      if (expenses.length > 0) {
+        const largest = expenses.reduce((max, t) =>
+          Math.abs(Number(t.amount)) > Math.abs(Number(max.amount)) ? t : max
+        )
+        setLargestOutflow({ name: largest.merchant ?? 'Unknown', amount: Math.abs(Number(largest.amount)) })
+      } else {
+        setLargestOutflow(null)
+      }
     }
   }, [selectedMonth, excludedCategoryIds])
 
@@ -389,7 +420,7 @@ export function DashboardView() {
             )}
           </motion.div>
 
-          {/* Upcoming RSU Vest */}
+          {/* Average Monthly Spending */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -397,31 +428,45 @@ export function DashboardView() {
             className={`bg-white rounded-2xl p-6 ${cardBorder}`}
           >
             <div className="flex items-center gap-2 mb-4">
-              <TrendingUp className="w-4 h-4" style={{ color: TAB_COLORS.accounts }} />
-              <h3 className="text-sm font-semibold text-[#1F1410]">Upcoming RSU Vest</h3>
+              <BarChart3 className="w-4 h-4" style={{ color: TAB_COLORS.accounts }} />
+              <h3 className="text-sm font-semibold text-[#1F1410]">Avg Monthly Spending</h3>
             </div>
-            {nextVest ? (
-              <div className="space-y-3">
-                {nextVest.company_name && (
-                  <p className="text-xs font-medium text-[#1F1410]/50">{nextVest.company_name}</p>
-                )}
-                <p className="text-2xl font-light text-[#1F1410]">
-                  {formatCurrency(nextVest.total_gross_value)}
+            {avgMonthlySpending !== null ? (
+              <>
+                <p className="text-2xl font-light text-[#1F1410] mb-1">
+                  {formatCurrency(avgMonthlySpending)}
                 </p>
-                <div className="flex items-center justify-between text-xs text-[#1F1410]/50">
-                  <span>{nextVest.shares_vested.toLocaleString()} shares @ {formatCurrency(nextVest.vest_price)}</span>
+                <p className="text-xs text-[#1F1410]/40 mb-4">trailing 6 months</p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[#1F1410]/50">Projected year total</span>
+                    <span className="font-semibold text-[#1F1410]">{formatCurrency(avgMonthlySpending * 12)}</span>
+                  </div>
+                  {totalBudget > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[#1F1410]/50">Compared to budget</span>
+                      <span
+                        className="font-semibold"
+                        style={{ color: avgMonthlySpending <= totalBudget ? STATUS_COLORS.success : STATUS_COLORS.error }}
+                      >
+                        {avgMonthlySpending <= totalBudget
+                          ? `${formatCurrency(totalBudget - avgMonthlySpending)} under`
+                          : `${formatCurrency(avgMonthlySpending - totalBudget)} over`}
+                      </span>
+                    </div>
+                  )}
+                  {topCategory && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[#1F1410]/50">Most frequent category</span>
+                      <span className="font-semibold text-[#1F1410]">{topCategory.name} · {topCategory.count} txns</span>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <Calendar className="w-3.5 h-3.5 text-[#1F1410]/40" />
-                  <span className="text-[#1F1410]/60">
-                    {new Date(nextVest.vest_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                  </span>
-                </div>
-              </div>
+              </>
             ) : (
               <div className="flex flex-col items-center justify-center py-4">
-                <TrendingUp className="w-8 h-8 text-[#1F1410]/10 mb-2" />
-                <p className="text-sm text-[#1F1410]/40">No upcoming vests</p>
+                <BarChart3 className="w-8 h-8 text-[#1F1410]/10 mb-2" />
+                <p className="text-sm text-[#1F1410]/40">Not enough data</p>
               </div>
             )}
           </motion.div>
@@ -448,13 +493,19 @@ export function DashboardView() {
               </div>
               {totalBudget > 0 && (
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#1F1410]/50">vs. Budget</span>
+                  <span className="text-[#1F1410]/50">Compared to budget</span>
                   <span
                     className="font-semibold"
                     style={{ color: spendingPerDay.projected <= totalBudget ? STATUS_COLORS.success : STATUS_COLORS.error }}
                   >
                     {spendingPerDay.projected <= totalBudget ? 'On track' : `${formatCurrency(spendingPerDay.projected - totalBudget)} over`}
                   </span>
+                </div>
+              )}
+              {largestOutflow && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[#1F1410]/50 truncate mr-2">Largest outflow</span>
+                  <span className="font-semibold text-[#1F1410] whitespace-nowrap">{largestOutflow.name} · {formatCurrency(largestOutflow.amount)}</span>
                 </div>
               )}
             </div>
