@@ -62,7 +62,14 @@ export function usePlaidLink({ plaidItemId, onSuccess }: UsePlaidLinkOptions = {
         )
 
         if (data?.error) throw new Error(data.error)
-        if (fnError) throw new Error(fnError.message)
+        if (fnError) {
+          const context = (fnError as unknown as { context?: Response }).context
+          if (context) {
+            const errBody = await context.json().catch(() => null)
+            if (errBody?.error) throw new Error(errBody.error)
+          }
+          throw new Error(fnError.message)
+        }
 
         onSuccess?.()
       } catch (err) {

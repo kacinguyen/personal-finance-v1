@@ -107,9 +107,10 @@ serve(async (req) => {
       { headers: { ...cors, 'Content-Type': 'application/json' } },
     )
   } catch (err) {
-    console.error('plaid-exchange-token error:', err instanceof Error ? err.message : err)
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('plaid-exchange-token error:', message)
     return new Response(
-      JSON.stringify({ error: 'Failed to exchange token and link accounts' }),
+      JSON.stringify({ error: `Failed to exchange token and link accounts: ${message}` }),
       { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
     )
   }

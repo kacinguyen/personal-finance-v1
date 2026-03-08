@@ -20,7 +20,7 @@ serve(async (req) => {
     const plaidBody: Record<string, unknown> = {
       user: { client_user_id: userId },
       client_name: 'Personal Finance App',
-      products: plaidItemId ? [] : ['transactions'],
+      products: plaidItemId ? [] : ['transactions', 'investments'],
       country_codes: ['US'],
       language: 'en',
     }
