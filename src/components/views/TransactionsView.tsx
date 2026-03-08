@@ -63,6 +63,7 @@ export type UITransaction = {
   needs_review: boolean
   splits: UITransactionSplit[]
   goal_id: string | null
+  goal_contribution_amount: number | null
 }
 
 export type FilterType = 'all' | 'income' | 'expense' | 'transfer'
@@ -227,6 +228,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
       needs_review: tx.needs_review ?? false,
       splits: uiSplits,
       goal_id: tx.goal_id ?? null,
+      goal_contribution_amount: tx.goal_contribution_amount ?? null,
     }
   }, [dbCategories, findCategoryByName, transferCategories])
 
@@ -545,6 +547,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
     tags: string | null
     notes: string | null
     goal_id: string | null
+    goal_contribution_amount: number | null
   }>) => {
     // Build DB update payload
     const dbUpdates: Record<string, unknown> = {}
@@ -556,6 +559,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
     if (updates.tags !== undefined) dbUpdates.tags = updates.tags
     if (updates.notes !== undefined) dbUpdates.notes = updates.notes
     if (updates.goal_id !== undefined) dbUpdates.goal_id = updates.goal_id
+    if (updates.goal_contribution_amount !== undefined) dbUpdates.goal_contribution_amount = updates.goal_contribution_amount
 
     // Optimistically update rawTransactions
     const prevRaw = rawTransactions
@@ -595,6 +599,43 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
       // Revert on error
       setRawTransactions(prevRaw)
       await fetchTransactions()
+      return
+    }
+
+    // Sync goal_contributions when goal tagging changes
+    if (updates.goal_id !== undefined || updates.goal_contribution_amount !== undefined) {
+      const tx = rawTransactions.find(t => t.id === transactionId)
+      const newGoalId = updates.goal_id !== undefined ? updates.goal_id : tx?.goal_id
+      const newAmount = updates.goal_contribution_amount !== undefined
+        ? updates.goal_contribution_amount
+        : (tx as any)?.goal_contribution_amount
+
+      // Delete any existing contribution for this transaction
+      await supabase
+        .from('goal_contributions')
+        .delete()
+        .eq('transaction_id', transactionId)
+        .eq('user_id', userId)
+
+      // Create new contribution if goal is set with an amount
+      if (newGoalId && newAmount && newAmount > 0) {
+        const txDate = tx?.date || new Date().toISOString().split('T')[0]
+        const { error: contribError } = await supabase
+          .from('goal_contributions')
+          .insert({
+            goal_id: newGoalId,
+            user_id: userId,
+            amount: newAmount,
+            contribution_date: txDate,
+            source: 'transfer',
+            transaction_id: transactionId,
+            notes: `From transaction: ${tx?.merchant || 'Unknown'}`,
+          })
+
+        if (contribError) {
+          console.error('Error creating goal contribution:', contribError)
+        }
+      }
     }
   }
 

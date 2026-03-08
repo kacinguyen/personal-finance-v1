@@ -37,6 +37,7 @@ type FieldSaveUpdates = Partial<{
   tags: string | null
   notes: string | null
   goal_id: string | null
+  goal_contribution_amount: number | null
 }>
 
 type TransactionDetailPanelProps = {
@@ -306,6 +307,112 @@ function RuleCategoryPicker({
         )}
       </div>
     </>
+  )
+}
+
+function GoalContributionEditor({
+  goals,
+  currentGoalId,
+  currentAmount,
+  transactionAmount,
+  onSave,
+  onCancel,
+}: {
+  goals: { id: string; name: string; color: string }[]
+  currentGoalId: string | null
+  currentAmount: number | null
+  transactionAmount: number
+  onSave: (goalId: string | null, amount: number | null) => Promise<void>
+  onCancel: () => void
+}) {
+  const [selectedGoalId, setSelectedGoalId] = useState(currentGoalId || '')
+  const [amount, setAmount] = useState(currentAmount ? String(currentAmount) : '')
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Default to full transaction amount when selecting a new goal
+  const handleGoalChange = (goalId: string) => {
+    setSelectedGoalId(goalId)
+    if (goalId && !amount) {
+      setAmount(String(transactionAmount))
+    }
+    if (!goalId) {
+      setAmount('')
+    }
+  }
+
+  const handleSave = async () => {
+    const goalId = selectedGoalId || null
+    const parsedAmount = amount ? parseFloat(amount) : null
+
+    // Validate: must be a positive number within the transaction amount
+    if (goalId && parsedAmount !== null) {
+      if (isNaN(parsedAmount) || parsedAmount <= 0 || parsedAmount > transactionAmount) return
+    }
+
+    await onSave(goalId, goalId ? parsedAmount : null)
+  }
+
+  // Close on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        onCancel()
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [onCancel])
+
+  return (
+    <div ref={containerRef} className="flex flex-col gap-2 mt-1">
+      <select
+        value={selectedGoalId}
+        onChange={(e) => handleGoalChange(e.target.value)}
+        autoFocus
+        className="text-sm w-full bg-[#1F1410]/[0.03] rounded-md px-2 py-1.5 outline-none ring-1 ring-[#14B8A6]/40 text-[#1F1410]"
+      >
+        <option value="">None</option>
+        {goals.map((goal) => (
+          <option key={goal.id} value={goal.id}>
+            {goal.name}
+          </option>
+        ))}
+      </select>
+      {selectedGoalId && (
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-[#1F1410]/40">$</span>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder={String(transactionAmount)}
+              min="0.01"
+              max={transactionAmount}
+              step="0.01"
+              className="text-sm w-full bg-[#1F1410]/[0.03] rounded-md pl-6 pr-2 py-1.5 outline-none ring-1 ring-[#14B8A6]/40 text-[#1F1410] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </div>
+          <span className="text-[10px] text-[#1F1410]/40 whitespace-nowrap">
+            of ${transactionAmount.toLocaleString()}
+          </span>
+        </div>
+      )}
+      <div className="flex gap-1.5">
+        <button
+          onClick={handleSave}
+          className="flex-1 text-xs font-medium px-2 py-1 rounded-md bg-[#14B8A6] text-white hover:bg-[#14B8A6]/90 transition-colors"
+        >
+          Save
+        </button>
+        <button
+          onClick={onCancel}
+          className="text-xs font-medium px-2 py-1 rounded-md bg-[#1F1410]/5 text-[#1F1410]/60 hover:bg-[#1F1410]/10 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -790,7 +897,7 @@ export function TransactionDetailPanel({
               </div>
             </div>
 
-            {/* Savings Goal - editable dropdown */}
+            {/* Savings Goal - editable dropdown with contribution amount */}
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 rounded-lg bg-[#1F1410]/5 flex items-center justify-center flex-shrink-0">
                 <PiggyBank className="w-4 h-4 text-[#1F1410]/50" />
@@ -799,29 +906,25 @@ export function TransactionDetailPanel({
                 <p className="text-xs text-[#1F1410]/50 uppercase tracking-wide">Savings Goal</p>
                 {goals.length > 0 ? (
                   editingField === 'goal' ? (
-                    <select
-                      value={selectedTransaction.goal_id || ''}
-                      onChange={async (e) => {
-                        const newGoalId = e.target.value || null
+                    <GoalContributionEditor
+                      goals={goals}
+                      currentGoalId={selectedTransaction.goal_id}
+                      currentAmount={selectedTransaction.goal_contribution_amount}
+                      transactionAmount={Math.abs(selectedTransaction.amount)}
+                      onSave={async (goalId, contributionAmount) => {
                         setSaving(true)
                         try {
-                          await onFieldSave(selectedTransaction.id, { goal_id: newGoalId })
+                          await onFieldSave(selectedTransaction.id, {
+                            goal_id: goalId,
+                            goal_contribution_amount: contributionAmount,
+                          })
                         } finally {
                           setSaving(false)
                         }
                         setEditingField(null)
                       }}
-                      onBlur={() => setEditingField(null)}
-                      autoFocus
-                      className="text-sm w-full bg-[#1F1410]/[0.03] rounded-md px-1 -mx-1 py-1 outline-none ring-1 ring-[#14B8A6]/40 text-[#1F1410]"
-                    >
-                      <option value="">None</option>
-                      {goals.map((goal) => (
-                        <option key={goal.id} value={goal.id}>
-                          {goal.name}
-                        </option>
-                      ))}
-                    </select>
+                      onCancel={() => setEditingField(null)}
+                    />
                   ) : (
                     <div
                       onClick={() => startEditing('goal')}
@@ -830,13 +933,20 @@ export function TransactionDetailPanel({
                       {selectedTransaction.goal_id ? (() => {
                         const goal = goals.find(g => g.id === selectedTransaction.goal_id)
                         return goal ? (
-                          <span
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium mt-0.5"
-                            style={{ backgroundColor: `${goal.color}15`, color: goal.color }}
-                          >
-                            <PiggyBank className="w-3 h-3" />
-                            {goal.name}
-                          </span>
+                          <div className="flex flex-col gap-0.5 mt-0.5">
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium self-start"
+                              style={{ backgroundColor: `${goal.color}15`, color: goal.color }}
+                            >
+                              <PiggyBank className="w-3 h-3" />
+                              {goal.name}
+                            </span>
+                            {selectedTransaction.goal_contribution_amount ? (
+                              <span className="text-xs text-[#10B981] font-medium">
+                                ${selectedTransaction.goal_contribution_amount.toLocaleString()} contributed
+                              </span>
+                            ) : null}
+                          </div>
                         ) : (
                           <p className="text-sm text-[#1F1410]/30 mt-0.5">Select a goal...</p>
                         )

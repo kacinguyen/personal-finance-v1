@@ -29,15 +29,17 @@ export type Transaction = {
   updated_at: string
   needs_review: boolean
   goal_id: string | null
+  goal_contribution_amount: number | null
 }
 
 /**
  * Input type for creating a new transaction (omits auto-generated fields)
  */
-export type TransactionInsert = Omit<Transaction, 'id' | 'created_at' | 'updated_at'> & {
+export type TransactionInsert = Omit<Transaction, 'id' | 'created_at' | 'updated_at' | 'goal_contribution_amount'> & {
   id?: string
   created_at?: string
   updated_at?: string
+  goal_contribution_amount?: number | null
 }
 
 /**
