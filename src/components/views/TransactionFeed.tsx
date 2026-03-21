@@ -625,9 +625,7 @@ export function TransactionFeed() {
                 <TrendingUp className="w-5 h-5" style={{ color: budgetTracking.statusColor }} />
               )}
             </div>
-            <p className="text-xs mt-1 font-medium" style={{ color: budgetTracking.statusColor }}>
-              {budgetTracking.statusText}
-            </p>
+            <p className="text-xs text-[#1F1410]/40 mt-1">{budgetTracking.statusText}</p>
           </motion.div>
 
           {/* vs Last Month */}
