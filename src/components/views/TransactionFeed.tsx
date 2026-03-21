@@ -3,8 +3,6 @@ import { motion } from 'framer-motion'
 import {
   TrendingDown,
   TrendingUp,
-  Calendar,
-  Wallet,
   LucideIcon,
   CircleDollarSign,
   CreditCard,
@@ -451,157 +449,119 @@ export function TransactionFeed() {
           </div>
         </motion.div>
 
-        {/* Overview + Insight Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr,320px] gap-6 mb-8 items-start">
+        {/* Stat Cards Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          {/* Spent This Month */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.4 }}
+            className="bg-white rounded-2xl p-6 border border-[#1F1410]/5"
+          >
+            <p className="text-[10px] uppercase tracking-wider text-[#1F1410]/30 mb-2">Spent This Month</p>
+            <p className="text-3xl font-light text-[#1F1410]">
+              ${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              <span className="text-base text-[#1F1410]/40"> of ${budgetTracking.totalBudget.toLocaleString()}</span>
+            </p>
+          </motion.div>
 
-        {/* Budget Tracking Insight */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          className="bg-white rounded-2xl p-6 border border-[#1F1410]/5"
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-4">
-            {/* Days Remaining */}
-            <div className="flex items-center gap-3">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.3 }}
-                className="w-12 h-12 rounded-xl bg-[#1F1410]/5 flex items-center justify-center flex-shrink-0"
-              >
-                <Calendar className="w-6 h-6 text-[#1F1410]/60" />
-              </motion.div>
-              <div>
-                <p className="text-2xl font-light text-[#1F1410]">{monthData.daysRemaining} days</p>
-                <p className="text-sm text-[#1F1410]/50">left in {monthData.monthName}</p>
-              </div>
-            </div>
+          {/* Days Left */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, duration: 0.4 }}
+            className="bg-white rounded-2xl p-6 border border-[#1F1410]/5"
+          >
+            <p className="text-[10px] uppercase tracking-wider text-[#1F1410]/30 mb-2">Days Left</p>
+            <p className="text-3xl font-light text-[#1F1410]">{monthData.daysRemaining}</p>
+          </motion.div>
 
-            {/* Budget Status */}
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <p className="text-sm text-[#1F1410]/50 mb-1">Budget Status</p>
-                <div className="flex items-center gap-2">
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: 'spring', stiffness: 300, damping: 20, delay: 0.4 }}
-                  >
-                    {budgetTracking.status === 'under' || budgetTracking.status === 'on-track' ? (
-                      <TrendingDown className="w-5 h-5" style={{ color: budgetTracking.statusColor }} />
-                    ) : (
-                      <TrendingUp className="w-5 h-5" style={{ color: budgetTracking.statusColor }} />
-                    )}
-                  </motion.div>
-                  <span className="font-semibold text-lg" style={{ color: budgetTracking.statusColor }}>
-                    {budgetTracking.statusText}
-                  </span>
-                </div>
-                {budgetTracking.statusDescription && (
-                  <p className="text-xs text-[#1F1410]/40 mt-0.5">{budgetTracking.statusDescription}</p>
-                )}
-              </div>
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.45 }}
-                className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${budgetTracking.statusColor}15` }}
-              >
-                <span className="text-sm font-bold" style={{ color: budgetTracking.statusColor }}>
-                  {Math.round(budgetTracking.percentageOfBudget)}%
-                </span>
-              </motion.div>
-            </div>
-          </div>
-
-          {/* Spent vs Budget Progress */}
-          {budgetTracking.status !== 'neutral' && (
-            <div className="mt-5 pt-5 border-t border-[#1F1410]/5">
-              <div className="flex justify-between text-sm text-[#1F1410]/60 mb-2">
-                <span>Spent vs Budget</span>
-                <span className="font-semibold text-[#1F1410]">
-                  ${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} of ${budgetTracking.totalBudget.toLocaleString()}
-                </span>
-              </div>
-              <div className="h-2.5 bg-[#1F1410]/5 rounded-full overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(budgetTracking.percentageOfBudget, 100)}%` }}
-                  transition={{ duration: 0.8, delay: 0.5, ease: 'easeOut' }}
-                  className="h-full rounded-full"
-                  style={{ backgroundColor: budgetTracking.statusColor }}
-                />
-              </div>
-              <p className="text-xs text-[#1F1410]/40 mt-2">
-                Day {monthData.daysElapsed} of {monthData.daysInMonth} — expected ~${Math.round(budgetTracking.expectedSpending).toLocaleString()} spent by now
+          {/* Budget Status */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4, duration: 0.4 }}
+            className="bg-white rounded-2xl p-6 border border-[#1F1410]/5"
+          >
+            <p className="text-[10px] uppercase tracking-wider text-[#1F1410]/30 mb-2">Budget Status</p>
+            <div className="flex items-center gap-2">
+              <p className="text-3xl font-light" style={{ color: budgetTracking.statusColor }}>
+                {Math.round(budgetTracking.percentageOfBudget)}%
               </p>
+              {budgetTracking.status === 'under' || budgetTracking.status === 'on-track' ? (
+                <TrendingDown className="w-5 h-5" style={{ color: budgetTracking.statusColor }} />
+              ) : (
+                <TrendingUp className="w-5 h-5" style={{ color: budgetTracking.statusColor }} />
+              )}
+              <span className="text-sm font-medium" style={{ color: budgetTracking.statusColor }}>
+                {budgetTracking.statusText}
+              </span>
             </div>
-          )}
+          </motion.div>
+        </div>
 
-        </motion.div>
-
-        {/* Over Budget Insight Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.3 }}
-          className="bg-white rounded-2xl p-5 border border-[#1F1410]/5"
-        >
-          <div className="flex items-center gap-2 mb-4">
-            {overBudgetCategories.length > 0 ? (
-              <AlertTriangle className="w-4 h-4 text-[#FF6B6B]" />
-            ) : (
-              <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
-            )}
-            <span className="text-xs uppercase tracking-widest text-[#1F1410]/30 font-medium">
-              {overBudgetCategories.length > 0 ? 'Over Budget' : 'Budget Health'}
-            </span>
+        {/* Spending Velocity Chart + Over Budget Card */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+          <div className="lg:col-span-2">
+            <SpendingVelocityChart
+              currentMonthTransactions={currentMonthVelocityData}
+              previousMonthTransactions={prevMonthTransactions}
+              totalBudget={budgetTracking.totalBudget}
+              selectedMonth={selectedMonth}
+            />
           </div>
 
-          {overBudgetCategories.length > 0 ? (
-            <div className="space-y-3">
-              {overBudgetCategories.map((cat) => {
-                const CatIcon = cat.icon
-                return (
-                  <div key={cat.id} className="flex items-center gap-3">
-                    <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: `${cat.color}15` }}
-                    >
-                      <CatIcon className="w-4 h-4" style={{ color: cat.color }} />
+          {/* Over Budget Insight Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.3 }}
+            className="bg-white rounded-2xl p-5 border border-[#1F1410]/5"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              {overBudgetCategories.length > 0 ? (
+                <AlertTriangle className="w-4 h-4 text-[#FF6B6B]" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
+              )}
+              <span className="text-xs uppercase tracking-widest text-[#1F1410]/30 font-medium">
+                {overBudgetCategories.length > 0 ? 'Over Budget' : 'Budget Health'}
+              </span>
+            </div>
+
+            {overBudgetCategories.length > 0 ? (
+              <div className="space-y-3">
+                {overBudgetCategories.map((cat) => {
+                  const CatIcon = cat.icon
+                  return (
+                    <div key={cat.id} className="flex items-center gap-3">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: `${cat.color}15` }}
+                      >
+                        <CatIcon className="w-4 h-4" style={{ color: cat.color }} />
+                      </div>
+                      <span className="text-sm font-medium text-[#1F1410] flex-1 truncate">
+                        {cat.name}
+                      </span>
+                      <span className="text-sm font-semibold text-[#FF6B6B] flex-shrink-0">
+                        ${cat.overage.toLocaleString()} over
+                      </span>
                     </div>
-                    <span className="text-sm font-medium text-[#1F1410] flex-1 truncate">
-                      {cat.name}
-                    </span>
-                    <span className="text-sm font-semibold text-[#FF6B6B] flex-shrink-0">
-                      ${cat.overage.toLocaleString()} over
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="text-center py-6">
-              <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center mx-auto mb-3">
-                <CheckCircle2 className="w-5 h-5 text-[#10B981]" />
+                  )
+                })}
               </div>
-              <p className="text-sm font-medium text-[#1F1410]/60">All categories on track</p>
-              <p className="text-xs text-[#1F1410]/30 mt-1">No categories have exceeded their budget</p>
-            </div>
-          )}
-        </motion.div>
-
-        </div>{/* end grid */}
-
-        {/* Spending Velocity Chart */}
-        <SpendingVelocityChart
-          currentMonthTransactions={currentMonthVelocityData}
-          previousMonthTransactions={prevMonthTransactions}
-          totalBudget={budgetTracking.totalBudget}
-          selectedMonth={selectedMonth}
-        />
+            ) : (
+              <div className="text-center py-6">
+                <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center mx-auto mb-3">
+                  <CheckCircle2 className="w-5 h-5 text-[#10B981]" />
+                </div>
+                <p className="text-sm font-medium text-[#1F1410]/60">All categories on track</p>
+                <p className="text-xs text-[#1F1410]/30 mt-1">No categories have exceeded their budget</p>
+              </div>
+            )}
+          </motion.div>
+        </div>
 
         {/* Section heading */}
         <h2 className="text-lg font-bold text-[#1F1410] mb-4">Category Budgets</h2>
