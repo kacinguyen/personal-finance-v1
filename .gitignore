@@ -26,3 +26,7 @@ npm-debug.log*
 # Supabase local
 .supabase/
 .vercel
+
+# Personal notes & screenshots
+notes/
+screenshots/
