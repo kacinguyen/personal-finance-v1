@@ -51,24 +51,32 @@ export function usePlaidLink({ plaidItemId, onSuccess }: UsePlaidLinkOptions = {
       setError(null)
 
       try {
-        const { data, error: fnError } = await supabase.functions.invoke(
-          'plaid-exchange-token',
+        // Refresh session in case it expired during Plaid Link flow
+        const { data: sessionData, error: refreshError } = await supabase.auth.refreshSession()
+        if (refreshError || !sessionData.session) {
+          throw new Error('Session expired. Please log in again.')
+        }
+
+        // Use direct fetch — supabase.functions.invoke with custom headers
+        // can drop the apikey header, causing a 401 from the gateway.
+        const resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/plaid-exchange-token`,
           {
-            body: {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${sessionData.session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
               public_token: publicToken,
               institution: metadata.institution ?? { institution_id: 'unknown', name: 'Unknown' },
-            },
+            }),
           },
         )
 
-        if (data?.error) throw new Error(data.error)
-        if (fnError) {
-          const context = (fnError as unknown as { context?: Response }).context
-          if (context) {
-            const errBody = await context.json().catch(() => null)
-            if (errBody?.error) throw new Error(errBody.error)
-          }
-          throw new Error(fnError.message)
+        const data = await resp.json()
+        if (!resp.ok || data.error) {
+          throw new Error(data.error || `Exchange failed (${resp.status})`)
         }
 
         onSuccess?.()

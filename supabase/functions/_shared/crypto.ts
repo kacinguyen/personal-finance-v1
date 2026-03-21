@@ -39,7 +39,22 @@ export async function insertPlaidItem(
     p_encryption_key: getEncryptionKey(),
   })
 
-  if (error) throw new Error(`Failed to insert plaid item`)
+  if (error) {
+    // Unique violation on plaid_item_id — item already exists, return existing row
+    if (error.code === '23505') {
+      const { data: existing, error: fetchErr } = await supabase
+        .from('plaid_items')
+        .select('id')
+        .eq('plaid_item_id', params.plaidItemId)
+        .eq('user_id', params.userId)
+        .single()
+      if (fetchErr || !existing) {
+        throw new Error(`Plaid item already exists for a different user`)
+      }
+      return existing.id as string
+    }
+    throw new Error(`Failed to insert plaid item: ${error.message}`)
+  }
   return data as string
 }
 
