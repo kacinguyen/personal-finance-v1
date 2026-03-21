@@ -1,14 +1,12 @@
 import { motion } from 'framer-motion'
 import {
   AlertCircle,
-  CheckCircle2,
   Shield,
   Sparkles,
   PiggyBank,
 } from 'lucide-react'
 
 export type BudgetSummaryCardProps = {
-  totalBudget: number
   expectedIncome: number
   needsBudget: number
   wantsBudget: number
@@ -16,14 +14,12 @@ export type BudgetSummaryCardProps = {
 }
 
 export function BudgetSummaryCard({
-  totalBudget,
   expectedIncome,
   needsBudget,
   wantsBudget,
   savingsBudget,
 }: BudgetSummaryCardProps) {
-  const remainingToAllocate = expectedIncome - totalBudget
-  const isOverBudget = remainingToAllocate < 0
+  const isOverBudget = needsBudget + wantsBudget > expectedIncome
 
   return (
     <motion.div
@@ -41,15 +37,7 @@ export function BudgetSummaryCard({
       }}
       className="bg-white rounded-2xl p-6 mb-8 border border-[#1F1410]/5"
     >
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <div className="flex flex-col">
-          <span className="text-sm font-medium text-[#1F1410]/50 mb-1">
-            Total Budget
-          </span>
-          <span className="text-3xl font-light text-[#1F1410]">
-            ${totalBudget.toLocaleString()}
-          </span>
-        </div>
+      <div className="mb-6">
         <div className="flex flex-col">
           <span className="text-sm font-medium text-[#1F1410]/50 mb-1">
             Expected Income
@@ -60,28 +48,16 @@ export function BudgetSummaryCard({
         </div>
       </div>
 
-      {/* Left to Allocate with Needs/Wants breakdown */}
+      {/* Needs / Wants / Savings Breakdown */}
       <div className="border-t border-[#1F1410]/5 pt-6">
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-sm font-medium text-[#1F1410]/50">
-            {isOverBudget ? 'Over Budget' : 'Left to Allocate'}
-          </span>
-          <div className="flex items-center gap-2">
-            <span
-              className={`text-2xl font-light ${isOverBudget ? 'text-[#FF6B6B]' : 'text-[#10B981]'}`}
-            >
-              {isOverBudget ? '-' : ''}$
-              {Math.abs(remainingToAllocate).toLocaleString()}
+        {isOverBudget && (
+          <div className="flex items-center gap-2 mb-4 text-[#FF6B6B]">
+            <AlertCircle className="w-4 h-4" />
+            <span className="text-sm font-medium">
+              Needs + Wants exceed expected income
             </span>
-            {isOverBudget ? (
-              <AlertCircle className="w-5 h-5 text-[#FF6B6B]" />
-            ) : (
-              <CheckCircle2 className="w-5 h-5 text-[#10B981]" />
-            )}
           </div>
-        </div>
-
-        {/* Needs / Wants / Savings Breakdown */}
+        )}
         <div className="grid grid-cols-3 gap-3">
           {/* Needs */}
           <div className="bg-[#10B981]/5 rounded-xl p-3">
@@ -167,7 +143,7 @@ export function BudgetSummaryCard({
               </div>
             </div>
             <span>
-              {expectedIncome > 0 ? Math.round((totalBudget / expectedIncome) * 100) : 0}% allocated
+              {expectedIncome > 0 ? Math.round(((needsBudget + wantsBudget) / expectedIncome) * 100) : 0}% to needs & wants
             </span>
           </div>
         </div>

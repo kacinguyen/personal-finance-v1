@@ -389,13 +389,8 @@ export function BudgetView() {
   )
 
   const savingsBudget = useMemo(
-    () => savingsGoals.reduce((sum, goal) => sum + goal.monthlyBudget, 0),
-    [savingsGoals],
-  )
-
-  const totalBudget = useMemo(
-    () => leafBudgets.reduce((sum, cat) => sum + cat.budget, 0) + savingsBudget,
-    [leafBudgets, savingsBudget],
+    () => Math.max(0, expectedIncome - needsBudget - wantsBudget),
+    [expectedIncome, needsBudget, wantsBudget],
   )
 
   // Update budget in database (debounced) + upsert monthly snapshot
@@ -707,7 +702,6 @@ export function BudgetView() {
 
         {/* Summary Card */}
         <BudgetSummaryCard
-          totalBudget={totalBudget}
           expectedIncome={expectedIncome}
           needsBudget={needsBudget}
           wantsBudget={wantsBudget}
