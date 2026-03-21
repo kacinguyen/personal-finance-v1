@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { Mail, LogOut, Wand2, Trash2, Plus, X, Search, Check, Building2 } from 'lucide-react'
+import { Mail, LogOut, Wand2, Trash2, Plus, X, Search, Check, Building2, Download } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useUser } from '../../hooks/useUser'
 import { useMerchantRules } from '../../hooks/useMerchantRules'
@@ -8,8 +8,12 @@ import type { MatchType, MerchantRule } from '../../hooks/useMerchantRules'
 import { useCategories } from '../../hooks/useCategories'
 import { dbCategoryToUI } from '../../lib/categoryUtils'
 import type { UICategory } from '../../types/category'
+import { ACCOUNT_TYPE_LABELS } from '../../types/account'
+import type { AccountType } from '../../types/account'
 import { TAB_COLORS } from '../../lib/colors'
 import { supabase } from '../../lib/supabase'
+import { fetchAvailableMonths, exportTransactionsToCSV, triggerCSVDownload } from '../../lib/csvExport'
+import type { ExportMonth } from '../../lib/csvExport'
 
 function RuleCategoryPicker({
   categories,
@@ -178,32 +182,36 @@ export function ProfileView() {
   const { categories: dbCategories } = useCategories()
 
   // Linked accounts state
-  const [linkedInstitutions, setLinkedInstitutions] = useState<{ id: string; institution_name: string | null; status: string; created_at: string; account_count: number }[]>([])
+  type LinkedAccount = { id: string; name: string; account_type: AccountType; mask: string | null }
+  type LinkedInstitution = { id: string; institution_name: string | null; status: string; created_at: string; accounts: LinkedAccount[] }
+  const [linkedInstitutions, setLinkedInstitutions] = useState<LinkedInstitution[]>([])
 
   const fetchLinkedInstitutions = useCallback(async () => {
     if (!userId) return
     const { data: plaidItems } = await supabase
       .from('plaid_items')
-      .select('id, institution_name, status, created_at')
+      .select('id, plaid_item_id, institution_name, status, created_at')
       .eq('user_id', userId)
     if (!plaidItems) return
 
     const { data: accounts } = await supabase
       .from('accounts')
-      .select('plaid_item_id')
+      .select('id, name, account_type, mask, plaid_item_id')
       .eq('user_id', userId)
       .eq('is_active', true)
 
-    const countMap = new Map<string, number>()
+    const accountsByItem = new Map<string, LinkedAccount[]>()
     for (const a of accounts ?? []) {
       if (a.plaid_item_id) {
-        countMap.set(a.plaid_item_id, (countMap.get(a.plaid_item_id) || 0) + 1)
+        const list = accountsByItem.get(a.plaid_item_id) || []
+        list.push({ id: a.id, name: a.name, account_type: a.account_type as AccountType, mask: a.mask })
+        accountsByItem.set(a.plaid_item_id, list)
       }
     }
 
     setLinkedInstitutions(plaidItems.map(item => ({
       ...item,
-      account_count: countMap.get(item.id) || 0,
+      accounts: accountsByItem.get(item.plaid_item_id) || [],
     })))
   }, [userId])
 
@@ -211,7 +219,47 @@ export function ProfileView() {
     fetchLinkedInstitutions()
   }, [fetchLinkedInstitutions])
 
+  const [removingItemId, setRemovingItemId] = useState<string | null>(null)
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
+
+  const handleRemovePlaidItem = async (itemId: string) => {
+    setRemovingItemId(itemId)
+    try {
+      await supabase.from('plaid_items').delete().eq('id', itemId)
+      await fetchLinkedInstitutions()
+    } finally {
+      setRemovingItemId(null)
+      setConfirmRemoveId(null)
+    }
+  }
+
   const allUiCategories = dbCategories.map(dbCategoryToUI)
+
+  // Export state
+  const [availableMonths, setAvailableMonths] = useState<ExportMonth[]>([])
+  const [selectedExportMonth, setSelectedExportMonth] = useState('all')
+  const [exporting, setExporting] = useState(false)
+
+  useEffect(() => {
+    if (!userId) return
+    fetchAvailableMonths(userId).then(setAvailableMonths)
+  }, [userId])
+
+  const handleExport = async () => {
+    if (!userId) return
+    setExporting(true)
+    try {
+      const selected = availableMonths.find(m => m.value === selectedExportMonth)
+      const csv = await exportTransactionsToCSV(userId, selected?.startDate, selected?.endDate)
+      if (!csv) return
+      const filename = selectedExportMonth === 'all'
+        ? 'transactions_all.csv'
+        : `transactions_${selectedExportMonth}.csv`
+      triggerCSVDownload(csv, filename)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   // Add rule form state
   const [showAddForm, setShowAddForm] = useState(false)
@@ -322,27 +370,70 @@ export function ProfileView() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-1">
+              <div className="space-y-3">
                 {linkedInstitutions.map(item => (
-                  <div key={item.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-[#1F1410]/[0.02] transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-[#1F1410]/5 flex items-center justify-center">
-                        <Building2 className="w-4 h-4 text-[#1F1410]/40" />
+                  <div key={item.id} className="rounded-xl border border-[#1F1410]/5 overflow-hidden">
+                    {/* Institution header */}
+                    <div className="flex items-center justify-between p-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-[#1F1410]/5 flex items-center justify-center">
+                          <Building2 className="w-4 h-4 text-[#1F1410]/40" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-[#1F1410]">{item.institution_name || 'Unknown Institution'}</p>
+                          <p className="text-xs text-[#1F1410]/40">
+                            {item.accounts.length} account{item.accounts.length !== 1 ? 's' : ''} · Connected {new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-[#1F1410]">{item.institution_name || 'Unknown Institution'}</p>
-                        <p className="text-xs text-[#1F1410]/40">
-                          {item.account_count} account{item.account_count !== 1 ? 's' : ''} · Connected {new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-                        </p>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                          item.status === 'active'
+                            ? 'bg-[#10B981]/10 text-[#10B981]'
+                            : 'bg-[#F59E0B]/10 text-[#F59E0B]'
+                        }`}>
+                          {item.status === 'active' ? 'Connected' : item.status}
+                        </span>
+                        <button
+                          onClick={() => {
+                            if (confirmRemoveId === item.id) {
+                              handleRemovePlaidItem(item.id)
+                            } else {
+                              setConfirmRemoveId(item.id)
+                              setTimeout(() => setConfirmRemoveId(prev => prev === item.id ? null : prev), 3000)
+                            }
+                          }}
+                          disabled={removingItemId === item.id}
+                          className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg transition-colors ${
+                            confirmRemoveId === item.id
+                              ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                              : 'text-[#1F1410]/30 hover:text-red-500 hover:bg-red-50'
+                          }`}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          {removingItemId === item.id ? 'Removing...' : confirmRemoveId === item.id ? 'Confirm?' : ''}
+                        </button>
                       </div>
                     </div>
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                      item.status === 'active'
-                        ? 'bg-[#10B981]/10 text-[#10B981]'
-                        : 'bg-[#F59E0B]/10 text-[#F59E0B]'
-                    }`}>
-                      {item.status === 'active' ? 'Connected' : item.status}
-                    </span>
+
+                    {/* Individual accounts */}
+                    {item.accounts.length > 0 && (
+                      <div className="border-t border-[#1F1410]/5 bg-[#1F1410]/[0.01]">
+                        {item.accounts.map(acct => (
+                          <div key={acct.id} className="flex items-center justify-between px-4 py-2.5 pl-14">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-sm text-[#1F1410]/70 truncate">{acct.name}</span>
+                              {acct.mask && (
+                                <span className="text-xs text-[#1F1410]/30 flex-shrink-0">····{acct.mask}</span>
+                              )}
+                            </div>
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[#1F1410]/5 text-[#1F1410]/50 flex-shrink-0">
+                              {ACCOUNT_TYPE_LABELS[acct.account_type] || acct.account_type}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -475,11 +566,58 @@ export function ProfileView() {
             )}
           </motion.div>
 
-          {/* Sign Out */}
+          {/* Export Data */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6, duration: 0.4 }}
+            className="bg-white rounded-2xl p-6 border border-[#1F1410]/5"
+          >
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-[#14B8A6]/10 flex items-center justify-center">
+                <Download className="w-4 h-4 text-[#14B8A6]" />
+              </div>
+              <h3 className="text-lg font-bold text-[#1F1410]">Export Data</h3>
+            </div>
+
+            {availableMonths.length === 0 ? (
+              <div className="text-center py-6">
+                <Download className="w-8 h-8 text-[#1F1410]/10 mx-auto mb-2" />
+                <p className="text-sm text-[#1F1410]/40">
+                  No transactions to export yet.
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-[#1F1410]/40 mb-4">Download your transactions as a CSV file.</p>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={selectedExportMonth}
+                    onChange={e => setSelectedExportMonth(e.target.value)}
+                    className="flex-1 text-sm bg-white rounded-xl border border-[#1F1410]/10 px-4 py-2.5 outline-none focus:ring-2 focus:ring-[#14B8A6]/30 focus:border-[#14B8A6]/40 text-[#1F1410] transition-all"
+                  >
+                    {availableMonths.map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleExport}
+                    disabled={exporting}
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-[#1F1410] rounded-xl hover:bg-[#1F1410]/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    {exporting ? 'Exporting...' : 'Export'}
+                  </button>
+                </div>
+              </>
+            )}
+          </motion.div>
+
+          {/* Sign Out */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.65, duration: 0.4 }}
             className="flex justify-start"
           >
             <button
