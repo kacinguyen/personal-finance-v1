@@ -478,30 +478,6 @@ export function TransactionFeed() {
               </div>
             </div>
 
-            {/* Expected Income */}
-            <div className="flex items-center gap-3">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.35 }}
-                className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: '#10B98115' }}
-              >
-                <Wallet className="w-6 h-6 text-[#10B981]" />
-              </motion.div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-2xl font-light text-[#1F1410]">${expectedIncome.toLocaleString()}</p>
-                  {usingHistoricalIncome && (
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F59E0B]/10 text-[#F59E0B]">
-                      Based on recent data
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-[#1F1410]/50">expected income</p>
-              </div>
-            </div>
-
             {/* Budget Status */}
             <div className="flex items-center gap-3">
               <div className="flex-1">
@@ -564,25 +540,6 @@ export function TransactionFeed() {
             </div>
           )}
 
-          {/* Income Progress Bar */}
-          <div className="mt-4">
-            <div className="flex justify-between text-xs text-[#1F1410]/40 mb-2">
-              <span>
-                ${budgetTracking.remainingIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
-                remaining from income
-              </span>
-              <span>{Math.round(budgetTracking.percentageOfIncome)}% of income spent</span>
-            </div>
-            <div className="h-2 bg-[#1F1410]/5 rounded-full overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${Math.min(budgetTracking.percentageOfIncome, 100)}%` }}
-                transition={{ duration: 1, delay: 0.6, ease: 'easeOut' }}
-                className="h-full rounded-full"
-                style={{ backgroundColor: budgetTracking.remainingIncome > 0 ? STATUS_COLORS.success : STATUS_COLORS.error }}
-              />
-            </div>
-          </div>
         </motion.div>
 
         {/* Over Budget Insight Card */}
