@@ -9,6 +9,7 @@ import {
   ListFilter,
   AlertTriangle,
   CheckCircle2,
+  Repeat,
 } from 'lucide-react'
 import { CategoryProgressList } from '../common/CategoryProgressList'
 import type { UICategory } from '../../types/category'
@@ -167,7 +168,7 @@ export function TransactionFeed() {
   }, [mapDBToUI, selectedMonth, excludedCategoryIds])
 
   // Expected income from shared hook (transaction-based with salary projection)
-  const { expectedIncome, isProjected: usingHistoricalIncome } = useExpectedIncome(selectedMonth)
+  const { expectedIncome } = useExpectedIncome(selectedMonth)
 
   // Fetch budgets from database
   const fetchBudgets = useCallback(async () => {
@@ -195,6 +196,7 @@ export function TransactionFeed() {
 
   // Previous month expense transactions (for spending velocity chart)
   const [prevMonthTransactions, setPrevMonthTransactions] = useState<{ date: string; amount: number }[]>([])
+  const [prevMonthTotal, setPrevMonthTotal] = useState<number>(0)
 
   const fetchPrevMonthTransactions = useCallback(async () => {
     const prevMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1)
@@ -202,7 +204,7 @@ export function TransactionFeed() {
 
     const { data, error } = await supabase
       .from('transactions')
-      .select('date, amount, category_id')
+      .select('date, amount, category_id, goal_id')
       .gte('date', startOfMonth)
       .lte('date', endOfMonth)
       .lt('amount', 0) // Only expenses (negative amounts)
@@ -211,12 +213,89 @@ export function TransactionFeed() {
       console.error('Error fetching prev month transactions:', error)
     } else if (data) {
       const filtered = data.filter(
-        (tx: { date: string; amount: number; category_id: string | null }) =>
+        (tx: { date: string; amount: number; category_id: string | null; goal_id: string | null }) =>
           tx.category_id && expenseCategoryIds.has(tx.category_id)
       )
       setPrevMonthTransactions(filtered.map((tx: { date: string; amount: number }) => ({ date: tx.date, amount: tx.amount })))
+      // Total for previous month (exclude goal-funded)
+      const total = filtered
+        .filter((tx: { goal_id: string | null }) => !tx.goal_id)
+        .reduce((sum: number, tx: { amount: number }) => sum + Math.abs(tx.amount), 0)
+      setPrevMonthTotal(total)
     }
   }, [selectedMonth, expenseCategoryIds])
+
+  // Recurring expense detection: merchants appearing in 2+ of last 3 months with similar amounts
+  type RecurringExpense = { merchant: string; amount: number; icon: LucideIcon; color: string; paidThisMonth: boolean }
+  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([])
+
+  const fetchRecurringExpenses = useCallback(async () => {
+    // Look at 3 months of data ending at selected month
+    const endMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0)
+    const startMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 2, 1)
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('merchant, amount, date, category_id')
+      .gte('date', startMonth.toISOString().split('T')[0])
+      .lte('date', endMonth.toISOString().split('T')[0])
+      .lt('amount', 0)
+
+    if (error) {
+      console.error('Error fetching recurring expenses:', error)
+      return
+    }
+
+    if (!data || data.length === 0) return
+
+    // Group by merchant + approximate amount (within 20%)
+    const merchantMonths = new Map<string, { months: Set<string>; amounts: number[]; category_id: string | null }>()
+    for (const tx of data) {
+      const key = tx.merchant?.toLowerCase()
+      if (!key) continue
+      const monthKey = tx.date.slice(0, 7)
+      const existing = merchantMonths.get(key)
+      if (existing) {
+        existing.months.add(monthKey)
+        existing.amounts.push(Math.abs(tx.amount))
+        if (!existing.category_id && tx.category_id) existing.category_id = tx.category_id
+      } else {
+        merchantMonths.set(key, {
+          months: new Set([monthKey]),
+          amounts: [Math.abs(tx.amount)],
+          category_id: tx.category_id,
+        })
+      }
+    }
+
+    const currentMonthKey = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`
+    const results: RecurringExpense[] = []
+
+    for (const [merchant, info] of merchantMonths) {
+      if (info.months.size < 2) continue
+      // Check amount consistency: std dev < 30% of mean
+      const mean = info.amounts.reduce((a, b) => a + b, 0) / info.amounts.length
+      const variance = info.amounts.reduce((sum, a) => sum + (a - mean) ** 2, 0) / info.amounts.length
+      if (Math.sqrt(variance) > mean * 0.3) continue
+
+      const cat = info.category_id ? dbCategories.find(c => c.id === info.category_id) : null
+      results.push({
+        merchant: data.find(tx => tx.merchant?.toLowerCase() === merchant)?.merchant || merchant,
+        amount: Math.round(mean * 100) / 100,
+        icon: cat ? getIcon(cat.icon) : Repeat,
+        color: cat?.color || '#6B7280',
+        paidThisMonth: info.months.has(currentMonthKey),
+      })
+    }
+
+    // Sort: unpaid first, then by amount descending
+    results.sort((a, b) => {
+      if (a.paidThisMonth !== b.paidThisMonth) return a.paidThisMonth ? 1 : -1
+      return b.amount - a.amount
+    })
+
+    setRecurringExpenses(results)
+  }, [selectedMonth, dbCategories])
 
   // Current month expense data for velocity chart — stored from raw DB data (before Math.abs)
   const [currentMonthVelocityData, setCurrentMonthVelocityData] = useState<{ date: string; amount: number }[]>([])
@@ -231,9 +310,10 @@ export function TransactionFeed() {
     if (dbCategories.length > 0) {
       fetchTransactions()
       fetchPrevMonthTransactions()
+      fetchRecurringExpenses()
     }
     fetchBudgets()
-  }, [fetchTransactions, fetchBudgets, fetchPrevMonthTransactions, dbCategories.length, selectedMonth])
+  }, [fetchTransactions, fetchBudgets, fetchPrevMonthTransactions, fetchRecurringExpenses, dbCategories.length, selectedMonth])
 
   // Calculate month data based on selected month
   const monthData = useMemo(() => {
@@ -433,6 +513,53 @@ export function TransactionFeed() {
       .sort((a, b) => b.overage - a.overage)
   }, [categoriesWithTotals])
 
+  // Daily spending allowance
+  const dailyAllowance = useMemo(() => {
+    const remaining = budgetTracking.totalBudget - totalSpent
+    if (monthData.daysRemaining <= 0) return 0
+    return Math.max(0, remaining / monthData.daysRemaining)
+  }, [budgetTracking.totalBudget, totalSpent, monthData.daysRemaining])
+
+  // Spending vs last month
+  const vsLastMonth = useMemo(() => {
+    const prevMonthName = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1)
+      .toLocaleDateString('en-US', { month: 'long' })
+    const diff = totalSpent - prevMonthTotal
+    const pctChange = prevMonthTotal > 0 ? (diff / prevMonthTotal) * 100 : 0
+    return { diff, pctChange, prevMonthName, prevMonthTotal }
+  }, [totalSpent, prevMonthTotal, selectedMonth])
+
+  // Most active category (by transaction count)
+  const mostActiveCategory = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const t of transactions) {
+      if (t.goal_id) continue
+      counts[t.category] = (counts[t.category] || 0) + 1
+    }
+    let topName = ''
+    let topCount = 0
+    for (const [name, count] of Object.entries(counts)) {
+      if (count > topCount) { topName = name; topCount = count }
+    }
+    if (!topName) return null
+    const cat = uiCategories.find(c => c.name === topName)
+    return {
+      name: topName,
+      count: topCount,
+      icon: cat?.icon || CircleDollarSign,
+      color: cat?.color || '#6B7280',
+    }
+  }, [transactions, uiCategories])
+
+  // Upcoming recurring expenses (not yet paid this month)
+  const upcomingRecurring = useMemo(() => {
+    return recurringExpenses.filter(r => !r.paidThisMonth)
+  }, [recurringExpenses])
+
+  const upcomingRecurringTotal = useMemo(() => {
+    return upcomingRecurring.reduce((sum, r) => sum + r.amount, 0)
+  }, [upcomingRecurring])
+
   return (
     <div className="min-h-screen w-full bg-[#FFFBF5] py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto">
@@ -450,7 +577,7 @@ export function TransactionFeed() {
         </motion.div>
 
         {/* Stat Cards Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {/* Spent This Month */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -465,15 +592,19 @@ export function TransactionFeed() {
             </p>
           </motion.div>
 
-          {/* Days Left */}
+          {/* Daily Allowance */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.4 }}
             className="bg-white rounded-2xl p-6 border border-[#1F1410]/5"
           >
-            <p className="text-[10px] uppercase tracking-wider text-[#1F1410]/30 mb-2">Days Left</p>
-            <p className="text-3xl font-light text-[#1F1410]">{monthData.daysRemaining}</p>
+            <p className="text-[10px] uppercase tracking-wider text-[#1F1410]/30 mb-2">Daily Allowance</p>
+            <p className="text-3xl font-light text-[#1F1410]">
+              ${Math.round(dailyAllowance).toLocaleString()}
+              <span className="text-base text-[#1F1410]/40">/day</span>
+            </p>
+            <p className="text-xs text-[#1F1410]/40 mt-1">{monthData.daysRemaining} days remaining</p>
           </motion.div>
 
           {/* Budget Status */}
@@ -498,9 +629,26 @@ export function TransactionFeed() {
               </span>
             </div>
           </motion.div>
+
+          {/* vs Last Month */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5, duration: 0.4 }}
+            className="bg-white rounded-2xl p-6 border border-[#1F1410]/5"
+          >
+            <p className="text-[10px] uppercase tracking-wider text-[#1F1410]/30 mb-2">Vs Last Month</p>
+            <p className="text-3xl font-light" style={{ color: vsLastMonth.diff > 0 ? STATUS_COLORS.error : STATUS_COLORS.success }}>
+              {vsLastMonth.diff >= 0 ? '+' : '-'}${Math.abs(Math.round(vsLastMonth.diff)).toLocaleString()}
+              {vsLastMonth.prevMonthTotal > 0 && (
+                <span className="text-base"> ({vsLastMonth.diff >= 0 ? '+' : ''}{Math.round(vsLastMonth.pctChange)}%)</span>
+              )}
+            </p>
+            <p className="text-xs text-[#1F1410]/40 mt-1">vs ${Math.round(vsLastMonth.prevMonthTotal).toLocaleString()} in {vsLastMonth.prevMonthName}</p>
+          </motion.div>
         </div>
 
-        {/* Spending Velocity Chart + Over Budget Card */}
+        {/* Spending Velocity Chart + Insight Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
           <div className="lg:col-span-2">
             <SpendingVelocityChart
@@ -511,56 +659,136 @@ export function TransactionFeed() {
             />
           </div>
 
-          {/* Over Budget Insight Card */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.3 }}
-            className="bg-white rounded-2xl p-5 border border-[#1F1410]/5"
-          >
-            <div className="flex items-center gap-2 mb-4">
-              {overBudgetCategories.length > 0 ? (
-                <AlertTriangle className="w-4 h-4 text-[#FF6B6B]" />
-              ) : (
-                <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
-              )}
-              <span className="text-xs uppercase tracking-widest text-[#1F1410]/30 font-medium">
-                {overBudgetCategories.length > 0 ? 'Over Budget' : 'Budget Health'}
-              </span>
-            </div>
+          {/* Right column: stacked insight cards */}
+          <div className="space-y-4">
+            {/* Over Budget Insight Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.3 }}
+              className="bg-white rounded-2xl p-5 border border-[#1F1410]/5"
+            >
+              <div className="flex items-center gap-2 mb-4">
+                {overBudgetCategories.length > 0 ? (
+                  <AlertTriangle className="w-4 h-4 text-[#FF6B6B]" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
+                )}
+                <span className="text-xs uppercase tracking-widest text-[#1F1410]/30 font-medium">
+                  {overBudgetCategories.length > 0 ? 'Over Budget' : 'Budget Health'}
+                </span>
+              </div>
 
-            {overBudgetCategories.length > 0 ? (
-              <div className="space-y-3">
-                {overBudgetCategories.map((cat) => {
-                  const CatIcon = cat.icon
-                  return (
-                    <div key={cat.id} className="flex items-center gap-3">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ backgroundColor: `${cat.color}15` }}
-                      >
-                        <CatIcon className="w-4 h-4" style={{ color: cat.color }} />
+              {overBudgetCategories.length > 0 ? (
+                <div className="space-y-3">
+                  {overBudgetCategories.map((cat) => {
+                    const CatIcon = cat.icon
+                    return (
+                      <div key={cat.id} className="flex items-center gap-3">
+                        <div
+                          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: `${cat.color}15` }}
+                        >
+                          <CatIcon className="w-4 h-4" style={{ color: cat.color }} />
+                        </div>
+                        <span className="text-sm font-medium text-[#1F1410] flex-1 truncate">
+                          {cat.name}
+                        </span>
+                        <span className="text-sm font-semibold text-[#FF6B6B] flex-shrink-0">
+                          ${cat.overage.toLocaleString()} over
+                        </span>
                       </div>
-                      <span className="text-sm font-medium text-[#1F1410] flex-1 truncate">
-                        {cat.name}
-                      </span>
-                      <span className="text-sm font-semibold text-[#FF6B6B] flex-shrink-0">
-                        ${cat.overage.toLocaleString()} over
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="text-center py-6">
-                <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center mx-auto mb-3">
-                  <CheckCircle2 className="w-5 h-5 text-[#10B981]" />
+                    )
+                  })}
                 </div>
-                <p className="text-sm font-medium text-[#1F1410]/60">All categories on track</p>
-                <p className="text-xs text-[#1F1410]/30 mt-1">No categories have exceeded their budget</p>
-              </div>
+              ) : (
+                <div className="text-center py-4">
+                  <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center mx-auto mb-2">
+                    <CheckCircle2 className="w-5 h-5 text-[#10B981]" />
+                  </div>
+                  <p className="text-sm font-medium text-[#1F1410]/60">All categories on track</p>
+                </div>
+              )}
+            </motion.div>
+
+            {/* Most Active Category */}
+            {mostActiveCategory && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.4 }}
+                className="bg-white rounded-2xl p-5 border border-[#1F1410]/5"
+              >
+                <span className="text-xs uppercase tracking-widest text-[#1F1410]/30 font-medium">
+                  Most Active
+                </span>
+                <div className="flex items-center gap-3 mt-3">
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: `${mostActiveCategory.color}15` }}
+                  >
+                    <mostActiveCategory.icon className="w-4 h-4" style={{ color: mostActiveCategory.color }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[#1F1410] truncate">{mostActiveCategory.name}</p>
+                    <p className="text-xs text-[#1F1410]/40">{mostActiveCategory.count} transactions</p>
+                  </div>
+                </div>
+              </motion.div>
             )}
-          </motion.div>
+
+            {/* Upcoming Recurring */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.5 }}
+              className="bg-white rounded-2xl p-5 border border-[#1F1410]/5"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs uppercase tracking-widest text-[#1F1410]/30 font-medium">
+                  Upcoming Recurring
+                </span>
+                {upcomingRecurringTotal > 0 && (
+                  <span className="text-xs font-semibold text-[#1F1410]/50">
+                    ~${Math.round(upcomingRecurringTotal).toLocaleString()}
+                  </span>
+                )}
+              </div>
+
+              {upcomingRecurring.length > 0 ? (
+                <div className="space-y-2.5">
+                  {upcomingRecurring.slice(0, 5).map((r) => {
+                    const RIcon = r.icon
+                    return (
+                      <div key={r.merchant} className="flex items-center gap-3">
+                        <div
+                          className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: `${r.color}15` }}
+                        >
+                          <RIcon className="w-3.5 h-3.5" style={{ color: r.color }} />
+                        </div>
+                        <span className="text-sm text-[#1F1410] flex-1 truncate">{r.merchant}</span>
+                        <span className="text-sm font-medium text-[#1F1410]/60 flex-shrink-0">
+                          ~${r.amount.toLocaleString()}
+                        </span>
+                      </div>
+                    )
+                  })}
+                  {upcomingRecurring.length > 5 && (
+                    <p className="text-xs text-[#1F1410]/30 text-center">
+                      +{upcomingRecurring.length - 5} more
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-3">
+                  <p className="text-sm text-[#1F1410]/40">
+                    {recurringExpenses.length > 0 ? 'All recurring paid' : 'No recurring detected'}
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          </div>
         </div>
 
         {/* Section heading */}
