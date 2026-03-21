@@ -648,7 +648,7 @@ export function TransactionFeed() {
 
         {/* Spending Velocity Chart + Insight Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-1">
             <SpendingVelocityChart
               currentMonthTransactions={currentMonthVelocityData}
               previousMonthTransactions={prevMonthTransactions}
@@ -657,7 +657,7 @@ export function TransactionFeed() {
             />
           </div>
 
-          {/* Right column: stacked insight cards */}
+          {/* Over Budget + Most Active stacked */}
           <div className="space-y-4">
             {/* Over Budget Insight Card */}
             <motion.div
@@ -734,59 +734,59 @@ export function TransactionFeed() {
                 </div>
               </motion.div>
             )}
+          </div>
 
-            {/* Upcoming Recurring */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.5 }}
-              className="bg-white rounded-2xl p-5 border border-[#1F1410]/5"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs uppercase tracking-widest text-[#1F1410]/30 font-medium">
-                  Upcoming Recurring
+          {/* Upcoming Recurring */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.5 }}
+            className="bg-white rounded-2xl p-5 border border-[#1F1410]/5"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs uppercase tracking-widest text-[#1F1410]/30 font-medium">
+                Upcoming Recurring
+              </span>
+              {upcomingRecurringTotal > 0 && (
+                <span className="text-xs font-semibold text-[#1F1410]/50">
+                  ~${Math.round(upcomingRecurringTotal).toLocaleString()}
                 </span>
-                {upcomingRecurringTotal > 0 && (
-                  <span className="text-xs font-semibold text-[#1F1410]/50">
-                    ~${Math.round(upcomingRecurringTotal).toLocaleString()}
-                  </span>
+              )}
+            </div>
+
+            {upcomingRecurring.length > 0 ? (
+              <div className="space-y-2.5">
+                {upcomingRecurring.slice(0, 5).map((r) => {
+                  const RIcon = r.icon
+                  return (
+                    <div key={r.merchant} className="flex items-center gap-3">
+                      <div
+                        className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: `${r.color}15` }}
+                      >
+                        <RIcon className="w-3.5 h-3.5" style={{ color: r.color }} />
+                      </div>
+                      <span className="text-sm text-[#1F1410] flex-1 truncate">{r.merchant}</span>
+                      <span className="text-sm font-medium text-[#1F1410]/60 flex-shrink-0">
+                        ~${r.amount.toLocaleString()}
+                      </span>
+                    </div>
+                  )
+                })}
+                {upcomingRecurring.length > 5 && (
+                  <p className="text-xs text-[#1F1410]/30 text-center">
+                    +{upcomingRecurring.length - 5} more
+                  </p>
                 )}
               </div>
-
-              {upcomingRecurring.length > 0 ? (
-                <div className="space-y-2.5">
-                  {upcomingRecurring.slice(0, 5).map((r) => {
-                    const RIcon = r.icon
-                    return (
-                      <div key={r.merchant} className="flex items-center gap-3">
-                        <div
-                          className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
-                          style={{ backgroundColor: `${r.color}15` }}
-                        >
-                          <RIcon className="w-3.5 h-3.5" style={{ color: r.color }} />
-                        </div>
-                        <span className="text-sm text-[#1F1410] flex-1 truncate">{r.merchant}</span>
-                        <span className="text-sm font-medium text-[#1F1410]/60 flex-shrink-0">
-                          ~${r.amount.toLocaleString()}
-                        </span>
-                      </div>
-                    )
-                  })}
-                  {upcomingRecurring.length > 5 && (
-                    <p className="text-xs text-[#1F1410]/30 text-center">
-                      +{upcomingRecurring.length - 5} more
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-3">
-                  <p className="text-sm text-[#1F1410]/40">
-                    {recurringExpenses.length > 0 ? 'All recurring paid' : 'No recurring detected'}
-                  </p>
-                </div>
-              )}
-            </motion.div>
-          </div>
+            ) : (
+              <div className="text-center py-3">
+                <p className="text-sm text-[#1F1410]/40">
+                  {recurringExpenses.length > 0 ? 'All recurring paid' : 'No recurring detected'}
+                </p>
+              </div>
+            )}
+          </motion.div>
         </div>
 
         {/* Section heading */}
