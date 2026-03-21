@@ -106,7 +106,7 @@ export function DashboardView() {
 
       const { data, error } = await supabase
         .from('transactions')
-        .select('amount, date, category_id')
+        .select('amount, date, category_id, goal_id')
         .gte('date', start.toISOString().split('T')[0])
         .lte('date', end.toISOString().split('T')[0])
 
@@ -116,11 +116,12 @@ export function DashboardView() {
       }
 
       if (data && data.length > 0) {
-        // Group by month, excluding income/transfer categories
+        // Group by month, excluding income/transfer categories and goal-funded transactions
         const monthTotals = new Map<string, number>()
         const categoryCounts = new Map<string, number>()
         for (const t of data) {
           if (t.category_id && excludedCategoryIds.has(t.category_id)) continue
+          if (t.goal_id) continue
           const monthKey = t.date.slice(0, 7)
           monthTotals.set(monthKey, (monthTotals.get(monthKey) ?? 0) + Math.abs(Number(t.amount)))
           if (t.category_id) {
@@ -164,14 +165,16 @@ export function DashboardView() {
 
     const { data, error } = await supabase
       .from('transactions')
-      .select('amount, category_id, merchant')
+      .select('amount, category_id, merchant, goal_id')
       .gte('date', startOfMonth)
       .lte('date', endOfMonth)
 
     if (error) {
       console.error('Error fetching transactions:', error)
     } else if (data) {
-      const expenses = data.filter(t => !t.category_id || !excludedCategoryIds.has(t.category_id))
+      const expenses = data.filter(t =>
+        (!t.category_id || !excludedCategoryIds.has(t.category_id)) && !t.goal_id
+      )
       const total = expenses.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
       setTotalSpent(total)
 

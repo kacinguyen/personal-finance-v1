@@ -31,6 +31,7 @@ type UITransaction = {
   merchant: string
   category: string
   category_id: string | null
+  goal_id: string | null
   date: string
   rawDate: string // ISO date for editing
   amount: number
@@ -108,6 +109,7 @@ export function TransactionFeed() {
       merchant: tx.merchant,
       category: tx.category || 'Uncategorized',
       category_id: tx.category_id || category?.id || null,
+      goal_id: tx.goal_id || null,
       date: formatDisplayDate(tx.date),
       rawDate: tx.date,
       amount: Math.abs(tx.amount), // UI shows positive amounts
@@ -155,10 +157,10 @@ export function TransactionFeed() {
       )
       const uiTransactions = filtered.map(mapDBToUI)
       setTransactions(uiTransactions)
-      // Velocity chart: only include categorized expenses (negative amounts with expense category)
+      // Velocity chart: only include categorized expenses (negative amounts with expense category, excluding goal-funded)
       setCurrentMonthVelocityData(
         (data as DBTransaction[]).filter(tx =>
-          tx.amount < 0 && tx.category_id && expenseCategoryIds.has(tx.category_id)
+          tx.amount < 0 && tx.category_id && expenseCategoryIds.has(tx.category_id) && !tx.goal_id
         ).map(tx => ({ date: tx.date, amount: tx.amount }))
       )
     }
@@ -238,10 +240,11 @@ export function TransactionFeed() {
     return getMonthData(selectedMonth)
   }, [selectedMonth])
 
-  // Categories with budget totals for display
+  // Categories with budget totals for display (exclude goal-linked transactions from budget tracking)
   const categoriesWithTotals = useMemo(() => {
     const totals: Record<string, number> = {}
     transactions.forEach((t) => {
+      if (t.goal_id) return // Goal-funded transactions don't count toward budget
       totals[t.category] = (totals[t.category] || 0) + t.amount
     })
 
