@@ -7,9 +7,8 @@ import {
   CircleDollarSign,
 } from 'lucide-react'
 import {
-  ComposedChart,
-  Bar,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -32,8 +31,9 @@ type YearlyChartData = {
   month: string
   monthIndex: number
   spent: number
-  budget: number
   income: number
+  cumulativeIncome: number | null
+  cumulativeSpent: number | null
 }
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -221,18 +221,6 @@ export function DashboardView() {
       console.error('Error fetching yearly transactions:', txError)
     }
 
-    // Fetch current budget (used for all months)
-    const { data: budgets, error: budgetError } = await supabase
-      .from('budgets')
-      .select('monthly_limit')
-      .eq('is_active', true)
-
-    if (budgetError) {
-      console.error('Error fetching budgets:', budgetError)
-    }
-
-    const monthlyBudget = budgets?.reduce((sum, b) => sum + Number(b.monthly_limit), 0) || 0
-
     // Group transactions by month (excluding income & transfer categories)
     const spentByMonth: Record<number, number> = {}
     // Group income by month (income-category transactions only)
@@ -248,21 +236,28 @@ export function DashboardView() {
       }
     })
 
-    // Build chart data for all 12 months
+    // Build cumulative chart data for all 12 months
     const now = new Date()
     const isCurrentYear = chartYear === now.getFullYear()
     const currentMonthIndex = now.getMonth()
 
+    let cumIncome = 0
+    let cumSpent = 0
     const chartData: YearlyChartData[] = MONTH_NAMES.map((name, index) => {
-      // For past years, show budget for all months
-      // For current year, only show budget up to current month
-      const showBudget = !isCurrentYear || index <= currentMonthIndex
+      const hasData = !isCurrentYear || index <= currentMonthIndex
+      const monthIncome = Math.round(incomeByMonth[index] || 0)
+      const monthSpent = Math.round(spentByMonth[index] || 0)
+      if (hasData) {
+        cumIncome += monthIncome
+        cumSpent += monthSpent
+      }
       return {
         month: name,
         monthIndex: index,
-        spent: Math.round(spentByMonth[index] || 0),
-        budget: showBudget ? monthlyBudget : 0,
-        income: Math.round(incomeByMonth[index] || 0),
+        spent: monthSpent,
+        income: monthIncome,
+        cumulativeIncome: hasData ? cumIncome : null,
+        cumulativeSpent: hasData ? cumSpent : null,
       }
     })
 
@@ -290,17 +285,25 @@ export function DashboardView() {
     }
   }, [totalBudget, totalSpent, expectedIncome])
 
-  // Custom tooltip for the chart
-  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) => {
+  // Custom tooltip for the cumulative chart
+  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ dataKey: string; name: string; value: number; color: string }>; label?: string }) => {
     if (active && payload && payload.length) {
+      const income = payload.find((p) => p.dataKey === 'cumulativeIncome')?.value
+      const spent = payload.find((p) => p.dataKey === 'cumulativeSpent')?.value
+      if (income == null && spent == null) return null
+      const savings = (income || 0) - (spent || 0)
       return (
         <div className="bg-white rounded-xl p-3 shadow-lg border border-[#1F1410]/5">
           <p className="text-sm font-bold text-[#1F1410] mb-2">{label}</p>
-          {payload.map((entry, index) => (
-            <p key={index} className="text-xs" style={{ color: entry.color }}>
-              {entry.name}: {formatCurrency(entry.value)}
-            </p>
-          ))}
+          <p className="text-xs" style={{ color: CHART_COLORS.income }}>
+            Cumulative Income: {formatCurrency(income || 0)}
+          </p>
+          <p className="text-xs" style={{ color: CHART_COLORS.spent }}>
+            Cumulative Expenses: {formatCurrency(spent || 0)}
+          </p>
+          <p className="text-xs font-semibold mt-1" style={{ color: savings >= 0 ? '#10B981' : '#FF6B6B' }}>
+            Total Savings: {formatCurrency(savings)}
+          </p>
         </div>
       )
     }
@@ -503,9 +506,9 @@ export function DashboardView() {
                 </div>
               )}
               {largestOutflow && (
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#1F1410]/50 truncate mr-2">Largest outflow</span>
-                  <span className="font-semibold text-[#1F1410] whitespace-nowrap">{largestOutflow.name} · {formatCurrency(largestOutflow.amount)}</span>
+                <div className="flex items-center justify-between text-xs min-w-0">
+                  <span className="text-[#1F1410]/50 shrink-0 mr-2">Largest outflow</span>
+                  <span className="font-semibold text-[#1F1410] truncate min-w-0 text-right">{largestOutflow.name} · {formatCurrency(largestOutflow.amount)}</span>
                 </div>
               )}
             </div>
@@ -522,7 +525,7 @@ export function DashboardView() {
           <div className="flex items-start justify-between mb-6">
             <div>
               <h2 className="text-xl font-bold text-[#1F1410] mb-1">Yearly Overview</h2>
-              <p className="text-sm text-[#1F1410]/50">Budget vs actual spending and income trend</p>
+              <p className="text-sm text-[#1F1410]/50">Cumulative income vs expenses</p>
             </div>
 
             {/* Year Selector */}
@@ -561,7 +564,17 @@ export function DashboardView() {
 
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={yearlyChartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+              <AreaChart data={yearlyChartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <defs>
+                  <linearGradient id="incomeGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10B981" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#10B981" stopOpacity={0.05} />
+                  </linearGradient>
+                  <linearGradient id="spentGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#F59E0B" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#F59E0B" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(31, 20, 16, 0.08)" />
                 <XAxis
                   dataKey="month"
@@ -581,30 +594,29 @@ export function DashboardView() {
                   iconType="circle"
                   formatter={(value) => <span className="text-xs text-[#1F1410]/70">{value}</span>}
                 />
-                <Bar
-                  dataKey="budget"
-                  name="Budget"
-                  fill={CHART_COLORS.budget}
-                  radius={[4, 4, 0, 0]}
-                  barSize={24}
-                />
-                <Bar
-                  dataKey="spent"
-                  name="Actual Spent"
-                  fill={CHART_COLORS.spent}
-                  radius={[4, 4, 0, 0]}
-                  barSize={24}
-                />
-                <Line
+                <Area
                   type="monotone"
-                  dataKey="income"
-                  name="Income"
+                  dataKey="cumulativeIncome"
+                  name="Cumulative Income"
                   stroke={CHART_COLORS.income}
-                  strokeWidth={3}
-                  dot={{ fill: CHART_COLORS.income, strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, strokeWidth: 0 }}
+                  strokeWidth={2.5}
+                  fill="url(#incomeGradient)"
+                  dot={{ fill: CHART_COLORS.income, strokeWidth: 0, r: 3 }}
+                  activeDot={{ r: 5, strokeWidth: 0 }}
+                  connectNulls={false}
                 />
-              </ComposedChart>
+                <Area
+                  type="monotone"
+                  dataKey="cumulativeSpent"
+                  name="Cumulative Expenses"
+                  stroke={CHART_COLORS.spent}
+                  strokeWidth={2.5}
+                  fill="url(#spentGradient)"
+                  dot={{ fill: CHART_COLORS.spent, strokeWidth: 0, r: 3 }}
+                  activeDot={{ r: 5, strokeWidth: 0 }}
+                  connectNulls={false}
+                />
+              </AreaChart>
             </ResponsiveContainer>
           </div>
 

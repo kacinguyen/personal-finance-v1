@@ -135,7 +135,7 @@ export function YearlyIncomeChart({ paystubs, selectedMonth, reimbursementTransa
       const lastSources = extractSources(lastStubs, lastReimbursement)
 
       const hasCurData = curStubs.length > 0 || curReimbursement > 0
-      const isForecast = !hasCurData && (year > now.getFullYear() || (year === now.getFullYear() && m > now.getMonth()))
+      const isForecast = !hasCurData && (year > now.getFullYear() || (year === now.getFullYear() && m >= now.getMonth()))
 
       const curTotal = filteredTotal(curSources, activeFilters)
       const lastTotal = filteredTotal(lastSources, activeFilters)
