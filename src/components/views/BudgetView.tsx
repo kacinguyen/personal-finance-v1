@@ -14,7 +14,6 @@ import { useExpectedIncome } from '../../hooks/useExpectedIncome'
 import type { CategoryType } from '../../types/category'
 import { BudgetSummaryCard } from '../budget/BudgetSummaryCard'
 import { AddCategoryDropdown } from '../budget/AddCategoryDropdown'
-import { SavingsGoalsSection } from '../budget/BudgetCategorySection'
 import { BudgetCategoryTable } from '../budget/BudgetCategoryTable'
 
 // Database budget type with joined category data
@@ -60,63 +59,7 @@ export type CategoryBudget = {
   display_order: number
 }
 
-// Database savings goal type
-type DBGoal = {
-  id: string
-  name: string
-  target_amount: number
-  current_amount: number
-  deadline: string | null
-  goal_type: string
-  icon: string
-  color: string
-  is_active: boolean
-  monthly_budget: number | null
-}
 
-// UI savings goal type
-export type SavingsGoal = {
-  id: string
-  name: string
-  icon: LucideIcon
-  color: string
-  targetAmount: number
-  currentAmount: number
-  monthlyBudget: number
-  deadline: Date | null
-  progress: number
-}
-
-// Convert DB goal to UI format
-function dbGoalToUI(goal: DBGoal): SavingsGoal {
-  const targetDate = goal.deadline ? new Date(goal.deadline) : null
-  const remaining = Number(goal.target_amount) - Number(goal.current_amount)
-
-  // Calculate suggested monthly based on deadline, or use stored monthly_budget
-  let monthlyBudget = goal.monthly_budget ? Number(goal.monthly_budget) : 0
-  if (!monthlyBudget && targetDate) {
-    const now = new Date()
-    const monthsUntilTarget = Math.max(1,
-      (targetDate.getFullYear() - now.getFullYear()) * 12 +
-      (targetDate.getMonth() - now.getMonth())
-    )
-    monthlyBudget = Math.ceil(remaining / monthsUntilTarget)
-  }
-
-  return {
-    id: goal.id,
-    name: goal.name,
-    icon: getIcon(goal.icon),
-    color: goal.color,
-    targetAmount: Number(goal.target_amount),
-    currentAmount: Number(goal.current_amount),
-    monthlyBudget,
-    deadline: targetDate,
-    progress: Number(goal.target_amount) > 0
-      ? (Number(goal.current_amount) / Number(goal.target_amount)) * 100
-      : 0,
-  }
-}
 
 // Convert DB budget to UI format
 function dbToUI(budget: DBBudgetWithCategory): CategoryBudget {
@@ -173,8 +116,6 @@ export function BudgetView() {
 
   const { expectedIncome } = useExpectedIncome(selectedMonth)
 
-  // Savings goals state
-  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([])
 
   // Delete confirmation state
   const [deletingInfo, setDeletingInfo] = useState<{
@@ -306,23 +247,6 @@ export function BudgetView() {
     }
   }, [seedDefaultData, categoriesLoading, needCategories, wantCategories, incomeCategories, transferCategories, userId])
 
-  // Fetch savings goals from database
-  const fetchSavingsGoals = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('goals')
-      .select('id, name, target_amount, current_amount, deadline, goal_type, icon, color, is_active, monthly_budget')
-      .eq('is_active', true)
-      .order('priority', { ascending: true })
-
-    if (error) {
-      console.error('Error fetching savings goals:', error)
-      return
-    }
-
-    if (data) {
-      setSavingsGoals(data.map(dbGoalToUI))
-    }
-  }, [])
 
   // Fetch last month's budget snapshots and merge into budgets
   const fetchLastMonthBudgets = useCallback(async () => {
@@ -353,8 +277,7 @@ export function BudgetView() {
   // Fetch on mount and when selected month changes
   useEffect(() => {
     fetchBudgets()
-    fetchSavingsGoals()
-  }, [fetchBudgets, fetchSavingsGoals, selectedMonth])
+  }, [fetchBudgets, selectedMonth])
 
   // Fetch last month budgets after main budgets load
   useEffect(() => {
@@ -448,39 +371,6 @@ export function BudgetView() {
     }, 500)
   }
 
-  // Update savings goal monthly budget
-  const updateSavingsBudgetInDB = useCallback(async (id: string, value: number) => {
-    const { error } = await supabase
-      .from('goals')
-      .update({ monthly_budget: value })
-      .eq('id', id)
-
-    if (error) {
-      console.error('Error updating savings budget:', error)
-    }
-  }, [])
-
-  const handleSavingsBudgetChange = (id: string, value: string) => {
-    const numValue = parseInt(value.replace(/[^0-9]/g, '')) || 0
-
-    // Update local state immediately
-    setSavingsGoals((prev) =>
-      prev.map((goal) =>
-        goal.id === id
-          ? { ...goal, monthlyBudget: numValue }
-          : goal,
-      ),
-    )
-
-    // Debounce database update
-    const key = `savings_${id}`
-    if (debounceRef.current[key]) {
-      clearTimeout(debounceRef.current[key])
-    }
-    debounceRef.current[key] = setTimeout(() => {
-      updateSavingsBudgetInDB(id, numValue)
-    }, 500)
-  }
 
   // Handle reorder: given new ordered list, compute display_order and persist
   const handleReorder = useCallback(async (orderedBudgets: CategoryBudget[]) => {
@@ -726,12 +616,6 @@ export function BudgetView() {
             onSetParent={handleSetParent}
           />
 
-          {/* Savings Section */}
-          <SavingsGoalsSection
-            savingsGoals={savingsGoals}
-            onBudgetChange={handleSavingsBudgetChange}
-            animationDelay={0.5}
-          />
         </div>
       </div>
 

@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-react'
 import { availableIcons, availableColors } from '../../lib/iconMap'
-import type { CategoryBudget, CategoryGroup, SavingsGoal } from '../views/BudgetView'
+import type { CategoryBudget, CategoryGroup } from '../views/BudgetView'
 import type { CategoryType } from '../../types/category'
 
 // Inline icon + color picker shared by edit & subcategory forms
@@ -579,7 +579,6 @@ function CategoryGroupRow({
   )
 }
 
-// SavingsGoalRow component - displays a savings goal with monthly allocation
 // --- Exported section components ---
 
 export type BudgetCategorySectionProps = {
@@ -669,108 +668,3 @@ export function BudgetCategorySection({
   )
 }
 
-export type SavingsGoalsSectionProps = {
-  savingsGoals: SavingsGoal[]
-  onBudgetChange: (id: string, value: string) => void
-  animationDelay?: number
-}
-
-export function SavingsGoalsSection({
-  savingsGoals,
-  onBudgetChange,
-  animationDelay = 0.5,
-}: SavingsGoalsSectionProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: animationDelay, duration: 0.4 }}
-      className="bg-white rounded-2xl overflow-hidden border border-[#1F1410]/5"
-    >
-      {/* Table header — matches category table grid: [24px_32px_1fr_1fr_80px_80px_100px_56px] */}
-      <div className="grid grid-cols-[24px_32px_1fr_1fr_80px_80px_100px_56px] gap-2 px-4 py-3 border-b border-[#1F1410]/5 text-[10px] font-semibold text-[#1F1410]/40 uppercase tracking-wide">
-        <div />
-        <div />
-        <div>Goal</div>
-        <div>Deadline</div>
-        <div>Progress</div>
-        <div />
-        <div className="text-right">Monthly</div>
-        <div />
-      </div>
-
-      {/* Table rows */}
-      <div className="divide-y divide-[#1F1410]/5">
-        {savingsGoals.map((goal, index) => {
-          const Icon = goal.icon
-          const deadlineStr = goal.deadline
-            ? goal.deadline.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-            : '—'
-
-          return (
-            <motion.div
-              key={goal.id}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: index * 0.03, duration: 0.2 }}
-              className="group grid grid-cols-[24px_32px_1fr_1fr_80px_80px_100px_56px] gap-2 px-4 py-2 items-center hover:bg-[#1F1410]/[0.015] transition-colors"
-            >
-              {/* Spacer (matches drag handle column) */}
-              <div />
-              {/* Icon */}
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${goal.color}15` }}
-              >
-                <Icon className="w-4 h-4" style={{ color: goal.color }} />
-              </div>
-
-              {/* Name + current/target */}
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-[#1F1410] truncate">{goal.name}</p>
-                <p className="text-xs text-[#1F1410]/40">
-                  ${goal.currentAmount.toLocaleString()} of ${goal.targetAmount.toLocaleString()}
-                </p>
-              </div>
-
-              {/* Deadline (aligned with Parent column) */}
-              <div className="text-xs text-[#1F1410]/40 font-medium">
-                {deadlineStr}
-              </div>
-
-              {/* Progress (aligned with Type column) */}
-              <div className="text-xs font-medium text-[#1F1410]/60">
-                {Math.round(goal.progress)}%
-              </div>
-
-              {/* Spacer (aligned with Last Mo. column) */}
-              <div />
-
-              {/* Monthly budget input (aligned with Budget column) */}
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1F1410]/40 text-sm font-medium">
-                  $
-                </span>
-                <input
-                  type="text"
-                  value={goal.monthlyBudget}
-                  onChange={(e) => onBudgetChange(goal.id, e.target.value)}
-                  className="w-full pl-6 pr-2 py-1 text-right font-semibold text-[#1F1410] bg-[#1F1410]/[0.03] rounded-lg focus:bg-white focus:ring-2 focus:ring-[#38BDF8]/20 focus:outline-none transition-all text-sm"
-                />
-              </div>
-
-              {/* Actions spacer (matches category table) */}
-              <div />
-            </motion.div>
-          )
-        })}
-      </div>
-
-      {savingsGoals.length === 0 && (
-        <p className="text-sm text-[#1F1410]/40 py-8 text-center">
-          No savings goals yet. Create one on the Savings page.
-        </p>
-      )}
-    </motion.div>
-  )
-}
