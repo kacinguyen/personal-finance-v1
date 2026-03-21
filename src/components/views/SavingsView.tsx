@@ -314,6 +314,9 @@ export function SavingsView() {
                 const StatusIcon = getStatusIcon(goal.status)
                 const statusColor = getStatusColor(goal.status)
                 const remaining = goal.targetAmount - goal.currentAmount
+                const now = new Date()
+                const monthsLeft = Math.max(1, (goal.targetDate.getFullYear() - now.getFullYear()) * 12 + (goal.targetDate.getMonth() - now.getMonth()))
+                const monthlyNeeded = remaining > 0 ? remaining / monthsLeft : 0
                 return (
                   <div
                     key={goal.id}
@@ -370,21 +373,12 @@ export function SavingsView() {
                       </div>
                     </div>
 
-                    {/* Status Badge */}
-                    <div className="flex items-center gap-1.5 mb-4">
-                      <StatusIcon className="w-4 h-4" style={{ color: statusColor }} />
-                      <span className="text-xs font-semibold" style={{ color: statusColor }}>
-                        {getStatusText(goal.status)}
-                      </span>
-                    </div>
-
                     {/* Progress Amount */}
                     <div className="mb-3">
                       <div className="flex items-baseline gap-2 mb-1">
                         <span className="text-3xl font-light text-[#1F1410]">${goal.currentAmount.toLocaleString()}</span>
                         <span className="text-sm text-[#1F1410]/50">of ${goal.targetAmount.toLocaleString()}</span>
                       </div>
-                      <p className="text-xs text-[#1F1410]/40">${remaining.toLocaleString()} remaining</p>
                     </div>
 
                     {/* Remaining metric */}
@@ -397,9 +391,9 @@ export function SavingsView() {
                     {/* Status Message */}
                     <div className="p-3 rounded-xl" style={{ backgroundColor: `${statusColor}08` }}>
                       <p className="text-xs text-[#1F1410]/70">
-                        {goal.status === 'ahead' && <>You're ahead of schedule! Keep up the great work.</>}
-                        {goal.status === 'on-track' && <>You're on track to reach your goal by {goal.targetDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.</>}
-                        {goal.status === 'behind' && <>Consider increasing monthly contributions to stay on track.</>}
+                        {goal.status === 'ahead' && <>You're ahead of schedule! Save ~${monthlyNeeded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo to stay on track for {goal.targetDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}.</>}
+                        {goal.status === 'on-track' && <>Save ~${monthlyNeeded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo to reach your goal by {goal.targetDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}.</>}
+                        {goal.status === 'behind' && <>You'll need ~${monthlyNeeded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo to catch up by {goal.targetDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}.</>}
                       </p>
                     </div>
 
