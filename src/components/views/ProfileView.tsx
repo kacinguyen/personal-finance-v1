@@ -314,7 +314,7 @@ export function ProfileView() {
           transition={{ duration: 0.5 }}
           className="mb-8"
         >
-          <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410] mb-2">Settings</h1>
+          <h1 className="text-2xl font-bold text-[#1F1410] mb-2">Settings</h1>
         </motion.div>
 
         {/* Profile Card */}

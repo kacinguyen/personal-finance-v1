@@ -491,7 +491,7 @@ export function AccountsView() {
         transition={{ duration: 0.4 }}
         className="flex items-center justify-between mb-8"
       >
-        <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Accounts</h1>
+        <h1 className="text-2xl font-bold text-[#1F1410]">Accounts</h1>
 
         <div className="flex items-center gap-2">
           <button
