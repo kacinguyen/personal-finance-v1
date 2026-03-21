@@ -1021,7 +1021,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
           className="mb-8"
         >
           <div className="flex items-center justify-between mb-2">
-            <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Transactions</h1>
+            <h1 className="text-2xl font-bold text-[#1F1410]">Transactions</h1>
             <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
           </div>
         </motion.div>

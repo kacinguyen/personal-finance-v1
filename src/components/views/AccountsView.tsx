@@ -235,7 +235,6 @@ export function AccountsView() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editAccount, setEditAccount] = useState<Account | null>(null)
   const [plaidItems, setPlaidItems] = useState<PlaidItemPublic[]>([])
-  const [syncingPlaidItemId, setSyncingPlaidItemId] = useState<string | null>(null)
   const [showAddDropdown, setShowAddDropdown] = useState(false)
 
   // --- Data fetching ---
@@ -294,7 +293,6 @@ export function AccountsView() {
   })
 
   const syncPlaidItem = useCallback(async (plaidItemId: string) => {
-    setSyncingPlaidItemId(plaidItemId)
     try {
       await Promise.all([
         supabase.functions.invoke('plaid-sync-accounts', {
@@ -307,8 +305,6 @@ export function AccountsView() {
       await Promise.all([fetchAccounts(), fetchSnapshots()])
     } catch (err) {
       console.error('Error syncing plaid item:', err)
-    } finally {
-      setSyncingPlaidItemId(null)
     }
   }, [fetchAccounts, fetchSnapshots])
 
@@ -495,7 +491,7 @@ export function AccountsView() {
         transition={{ duration: 0.4 }}
         className="flex items-center justify-between mb-8"
       >
-        <h1 className="text-3xl sm:text-4xl font-bold text-[#1F1410]">Accounts</h1>
+        <h1 className="text-2xl font-bold text-[#1F1410]">Accounts</h1>
 
         <div className="flex items-center gap-2">
           <button
@@ -603,7 +599,6 @@ export function AccountsView() {
             netWorth={netWorth}
             totalAssets={totalAssets}
             totalLiabilities={totalLiabilities}
-            groupedAccounts={groupedAccounts}
           />
 
           {/* Net Worth Chart */}
@@ -626,10 +621,8 @@ export function AccountsView() {
                   accounts={accts}
                   plaidItems={plaidItems}
                   isExpanded={expandedGroups.has(group)}
-                  syncingPlaidItemId={syncingPlaidItemId}
                   groupIndex={groupIndex}
                   onToggle={() => toggleGroup(group)}
-                  onSyncPlaidItem={syncPlaidItem}
                   onEdit={(account) => {
                     setEditAccount(account)
                     setModalOpen(true)
