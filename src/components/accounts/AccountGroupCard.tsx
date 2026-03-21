@@ -1,6 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  RefreshCw,
   Link2,
   ChevronDown,
   ChevronRight,
@@ -13,17 +12,15 @@ import type { Account, AccountGroup } from '../../types/account'
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_GROUP_LABELS } from '../../types/account'
 import type { PlaidItemPublic } from '../../types/plaidItem'
 import { PlaidLinkButton } from '../common/PlaidLinkButton'
-import { GROUP_ICONS, formatCurrency, formatCurrencyFull, formatRelativeTime } from '../views/AccountsView'
+import { GROUP_ICONS, formatCurrencyFull, formatRelativeTime } from '../views/AccountsView'
 
 type AccountGroupCardProps = {
   group: AccountGroup
   accounts: Account[]
   plaidItems: PlaidItemPublic[]
   isExpanded: boolean
-  syncingPlaidItemId: string | null
   groupIndex: number
   onToggle: () => void
-  onSyncPlaidItem: (plaidItemId: string) => void
   onEdit: (account: Account) => void
   onDelete: (account: Account) => void
   onPlaidSuccess: () => void
@@ -34,26 +31,14 @@ export function AccountGroupCard({
   accounts: accts,
   plaidItems,
   isExpanded,
-  syncingPlaidItemId,
   groupIndex,
   onToggle,
-  onSyncPlaidItem,
   onEdit,
   onDelete,
   onPlaidSuccess,
 }: AccountGroupCardProps) {
   const GroupIcon = GROUP_ICONS[group]
   const groupColor = ACCOUNT_GROUP_COLORS[group]
-  const groupTotal = accts.reduce((sum, a) => sum + a.balance_current, 0)
-
-  // Find Plaid items connected to accounts in this group
-  const groupPlaidItemIds = new Set(
-    accts.filter((a) => !a.is_manual && a.plaid_item_id).map((a) => a.plaid_item_id),
-  )
-  const groupPlaidItems = plaidItems.filter((pi) => groupPlaidItemIds.has(pi.plaid_item_id))
-  const hasPlaidAccounts = groupPlaidItems.length > 0
-  const hasErrorItem = groupPlaidItems.some((pi) => pi.status === 'error')
-  const errorItem = groupPlaidItems.find((pi) => pi.status === 'error')
 
   return (
     <motion.div
@@ -78,46 +63,14 @@ export function AccountGroupCard({
           >
             <GroupIcon className="w-5 h-5" style={{ color: groupColor }} />
           </div>
-          <div className="text-left">
-            <h3 className="text-sm font-semibold text-[#1F1410]">
-              {ACCOUNT_GROUP_LABELS[group]}
-            </h3>
-            <p className="text-xs text-[#1F1410]/40">
-              {accts.length} account{accts.length !== 1 ? 's' : ''}
-            </p>
-          </div>
+          <h3 className="text-sm font-semibold text-[#1F1410]">
+            {ACCOUNT_GROUP_LABELS[group]}
+          </h3>
         </div>
 
         <div className="flex items-center gap-3">
-          {hasPlaidAccounts && (
-            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-              {hasErrorItem && errorItem && (
-                <PlaidLinkButton
-                  plaidItemId={errorItem.plaid_item_id}
-                  onSuccess={onPlaidSuccess}
-                  label="Re-connect"
-                  className="!px-2.5 !py-1 !text-xs !bg-amber-500 hover:!bg-amber-600"
-                />
-              )}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  groupPlaidItems
-                    .filter((pi) => pi.status === 'active')
-                    .forEach((pi) => onSyncPlaidItem(pi.plaid_item_id))
-                }}
-                disabled={syncingPlaidItemId !== null}
-                className="p-1.5 rounded-lg hover:bg-[#1F1410]/5 transition-colors disabled:opacity-50"
-                title="Sync linked accounts"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 text-[#14B8A6] ${
-                  groupPlaidItems.some((pi) => syncingPlaidItemId === pi.plaid_item_id) ? 'animate-spin' : ''
-                }`} />
-              </button>
-            </div>
-          )}
-          <span className="text-lg font-bold" style={{ color: groupColor }}>
-            {formatCurrency(groupTotal)}
+          <span className="text-sm text-[#1F1410]/40">
+            {accts.length} account{accts.length !== 1 ? 's' : ''}
           </span>
           {isExpanded ? (
             <ChevronDown className="w-5 h-5 text-[#1F1410]/30" />
@@ -183,6 +136,16 @@ export function AccountGroupCard({
                       {formatCurrencyFull(account.balance_current)}
                     </span>
                     <div className="flex items-center gap-1">
+                      {!account.is_manual && plaidItems.find(
+                        (pi) => pi.plaid_item_id === account.plaid_item_id && pi.status === 'error'
+                      ) && (
+                        <PlaidLinkButton
+                          plaidItemId={account.plaid_item_id!}
+                          onSuccess={onPlaidSuccess}
+                          label="Re-connect"
+                          className="!px-2.5 !py-1 !text-xs !bg-amber-500 hover:!bg-amber-600"
+                        />
+                      )}
                       <button
                         onClick={() => onEdit(account)}
                         className="p-1.5 rounded-lg hover:bg-[#1F1410]/5 transition-colors"
