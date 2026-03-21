@@ -26,7 +26,7 @@ export function queryTransactionsTool(supabase: SupabaseClient, userId: string) 
 
       if (startDate) query = query.gte('date', startDate)
       if (endDate) query = query.lte('date', endDate)
-      if (merchant) query = query.ilike('merchant_name', `%${merchant}%`)
+      if (merchant) query = query.ilike('merchant', `%${merchant}%`)
       if (category) {
         const { data: cats } = await supabase
           .from('categories')
@@ -53,7 +53,7 @@ export function queryTransactionsTool(supabase: SupabaseClient, userId: string) 
 
       return results.map((t: any) => ({
         date: t.date,
-        merchant: t.merchant_name,
+        merchant: t.merchant,
         amount: t.amount,
         category: t.categories?.name || 'Uncategorized',
         categoryType: t.categories?.category_type,

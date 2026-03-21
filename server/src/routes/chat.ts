@@ -54,6 +54,22 @@ export async function chatRoutes(app: FastifyInstance) {
       stopWhen: stepCountIs(5),
       temperature: MODEL_CONFIG.temperature,
       maxOutputTokens: MODEL_CONFIG.maxTokens,
+      onStepFinish: (event) => {
+        if (event.toolCalls && event.toolCalls.length > 0) {
+          for (const tc of event.toolCalls) {
+            app.log.info({ tool: tc.toolName, args: JSON.stringify((tc as any).args).slice(0, 200) }, 'tool called')
+          }
+        }
+        if (event.toolResults && event.toolResults.length > 0) {
+          for (const tr of event.toolResults) {
+            const resultPreview = JSON.stringify((tr as any).result).slice(0, 500)
+            app.log.info({ tool: tr.toolName, resultPreview }, 'tool result')
+          }
+        }
+        if (!event.toolCalls?.length && !event.toolResults?.length) {
+          app.log.info({ text: event.text?.slice(0, 100) }, 'step finished (no tools)')
+        }
+      },
     })
 
     const response = result.toUIMessageStreamResponse()

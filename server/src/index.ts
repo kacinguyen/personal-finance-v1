@@ -12,6 +12,9 @@ const allowedOrigins = [
   'https://personal-finance-app-v1-puce.vercel.app',
   'https://personal-finance-app-v1-kacinguyens-projects.vercel.app',
   'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
+  'http://localhost:5176',
 ]
 
 await app.register(cors, {

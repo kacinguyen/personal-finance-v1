@@ -8,6 +8,9 @@ import { getGoalsTool } from './get-goals.js'
 import { getPaystubsTool } from './get-paystubs.js'
 import { runWaterfallTool } from './run-waterfall.js'
 import { allocatePaycheckTool } from './allocate-paycheck.js'
+import { generateInsightsTool } from './generate-insights.js'
+import { compareMonthsTool } from './compare-months.js'
+import { getTopMerchantsTool } from './get-top-merchants.js'
 
 export function createTools(supabase: SupabaseClient, userId: string) {
   return {
@@ -20,5 +23,8 @@ export function createTools(supabase: SupabaseClient, userId: string) {
     get_paystubs: getPaystubsTool(supabase, userId),
     run_waterfall: runWaterfallTool(supabase, userId),
     allocate_paycheck: allocatePaycheckTool(supabase, userId),
+    generate_insights: generateInsightsTool(supabase, userId),
+    compare_months: compareMonthsTool(supabase, userId),
+    get_top_merchants: getTopMerchantsTool(supabase, userId),
   }
 }
