@@ -683,8 +683,9 @@ export function TransactionFeed() {
                         <span className="text-sm font-medium text-[#1F1410] flex-1 truncate">
                           {cat.name}
                         </span>
-                        <span className="text-sm font-semibold text-[#FF6B6B] flex-shrink-0">
-                          ${cat.overage.toLocaleString()} over
+                        <span className="text-sm flex-shrink-0">
+                          <span className="font-semibold text-[#FF6B6B]">${cat.overage.toLocaleString()}</span>
+                          <span className="text-[#1F1410]/40 font-normal"> over</span>
                         </span>
                       </div>
                     )
