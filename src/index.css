@@ -5,3 +5,12 @@
 body {
   font-family: 'Rethink Sans', sans-serif;
 }
+
+/* Hide scrollbar for bottom tab bar */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
