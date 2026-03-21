@@ -112,7 +112,7 @@ export function SpendingVelocityChart({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.25 }}
-      className="bg-white rounded-2xl p-6 border border-[#1F1410]/5"
+      className="bg-white rounded-2xl p-6 border border-[#1F1410]/5 h-full flex flex-col"
     >
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-[#1F1410]/70">Spending Velocity</h3>
@@ -134,7 +134,8 @@ export function SpendingVelocityChart({
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={240}>
+      <div className="flex-1 min-h-0">
+      <ResponsiveContainer width="100%" height="100%" minHeight={240}>
         <ComposedChart data={chartData}>
           <XAxis
             dataKey="day"
@@ -206,6 +207,7 @@ export function SpendingVelocityChart({
           )}
         </ComposedChart>
       </ResponsiveContainer>
+      </div>
     </motion.div>
   )
 }
