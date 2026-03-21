@@ -10,8 +10,7 @@ import {
   GraduationCap,
   TrendingUp,
   Sparkles,
-  CheckCircle,
-  AlertCircle,
+
   Calendar,
   Plus,
   Pencil,
@@ -54,8 +53,6 @@ type ActiveGoal = {
   targetDate: Date
   monthlyTarget: number
   status: 'on-track' | 'ahead' | 'behind'
-  autoContribute: boolean
-  contributionField: string | null
 }
 
 type DbGoal = {
@@ -68,8 +65,6 @@ type DbGoal = {
   icon: string
   color: string
   is_active: boolean
-  auto_contribute: boolean
-  contribution_field: string | null
 }
 
 function nameToTag(name: string): string {
@@ -111,18 +106,17 @@ const dbGoalToActiveGoal = (dbGoal: DbGoal): ActiveGoal => {
     targetDate,
     monthlyTarget,
     status,
-    autoContribute: dbGoal.auto_contribute,
-    contributionField: dbGoal.contribution_field,
   }
 }
 
 export function SavingsView() {
   const { user } = useAuth()
-  const { needCategories, wantCategories } = useCategories()
+  const { needCategories, wantCategories, incomeCategories } = useCategories()
   const { getCategoriesForGoal, setCategoriesForGoal } = useGoalCategories()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [activeGoals, setActiveGoals] = useState<ActiveGoal[]>([])
   const [editingGoal, setEditingGoal] = useState<ActiveGoal | null>(null)
+  const [editingIncomeLinks, setEditingIncomeLinks] = useState<{ categoryId: string; percentage: number }[]>([])
   const [deletingGoalId, setDeletingGoalId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -131,7 +125,7 @@ export function SavingsView() {
     setIsLoading(true)
     const { data, error } = await supabase
       .from('goals')
-      .select('id, name, target_amount, current_amount, deadline, goal_type, icon, color, is_active, auto_contribute, contribution_field')
+      .select('id, name, target_amount, current_amount, deadline, goal_type, icon, color, is_active')
       .eq('is_active', true)
       .order('created_at', { ascending: false })
 
@@ -148,6 +142,33 @@ export function SavingsView() {
     fetchGoals()
   }, [fetchGoals])
 
+  // Save income links for a goal (delete + re-insert)
+  const saveIncomeLinks = async (goalId: string, links: { categoryId: string; percentage: number }[]) => {
+    if (!user) return
+    // Remove existing links
+    await supabase.from('goal_income_links').delete().eq('goal_id', goalId)
+    // Insert new links
+    if (links.length > 0) {
+      await supabase.from('goal_income_links').insert(
+        links.map(l => ({
+          goal_id: goalId,
+          category_id: l.categoryId,
+          user_id: user.id,
+          percentage: l.percentage,
+        }))
+      )
+    }
+  }
+
+  // Fetch income links for a goal
+  const fetchIncomeLinks = async (goalId: string) => {
+    const { data } = await supabase
+      .from('goal_income_links')
+      .select('category_id, percentage')
+      .eq('goal_id', goalId)
+    return (data ?? []).map(d => ({ categoryId: d.category_id, percentage: Number(d.percentage) }))
+  }
+
   const handleSaveGoal = async (customizedGoal: {
     id?: string
     name: string
@@ -158,8 +179,7 @@ export function SavingsView() {
     goalType: string
     icon: string
     color: string
-    autoContribute?: boolean
-    contributionField?: string | null
+    incomeLinks?: { categoryId: string; percentage: number }[]
     linkedCategories?: { categoryId: string; autoTag: boolean }[]
   }) => {
     const deadlineStr = customizedGoal.targetDate.toISOString().split('T')[0]
@@ -172,8 +192,6 @@ export function SavingsView() {
           name: customizedGoal.name,
           target_amount: customizedGoal.amount,
           deadline: deadlineStr,
-          auto_contribute: customizedGoal.autoContribute ?? false,
-          contribution_field: customizedGoal.contributionField ?? null,
         })
         .eq('id', customizedGoal.id)
 
@@ -184,6 +202,8 @@ export function SavingsView() {
         if (customizedGoal.linkedCategories) {
           await setCategoriesForGoal(customizedGoal.id, customizedGoal.linkedCategories)
         }
+        // Save income links
+        await saveIncomeLinks(customizedGoal.id, customizedGoal.incomeLinks ?? [])
         await fetchGoals()
       }
       setEditingGoal(null)
@@ -206,8 +226,6 @@ export function SavingsView() {
           icon: customizedGoal.icon,
           color: customizedGoal.color,
           is_active: true,
-          auto_contribute: customizedGoal.autoContribute ?? false,
-          contribution_field: customizedGoal.contributionField ?? null,
         })
         .select('id')
         .single()
@@ -219,6 +237,10 @@ export function SavingsView() {
         if (customizedGoal.linkedCategories && customizedGoal.linkedCategories.length > 0) {
           await setCategoriesForGoal(data.id, customizedGoal.linkedCategories)
         }
+        // Save income links
+        if (customizedGoal.incomeLinks && customizedGoal.incomeLinks.length > 0) {
+          await saveIncomeLinks(data.id, customizedGoal.incomeLinks)
+        }
         await fetchGoals()
       }
     }
@@ -229,7 +251,9 @@ export function SavingsView() {
     setIsModalOpen(true)
   }
 
-  const handleEditGoal = (goal: ActiveGoal) => {
+  const handleEditGoal = async (goal: ActiveGoal) => {
+    const links = await fetchIncomeLinks(goal.id)
+    setEditingIncomeLinks(links)
     setEditingGoal(goal)
     setIsModalOpen(true)
   }
@@ -261,17 +285,6 @@ export function SavingsView() {
     }
   }
 
-  const getStatusText = (status: ActiveGoal['status']) => {
-    switch (status) {
-      case 'on-track': return 'On Track'
-      case 'ahead': return 'Ahead of Schedule'
-      case 'behind': return 'Behind Schedule'
-    }
-  }
-
-  const getStatusIcon = (status: ActiveGoal['status']) => {
-    return status === 'behind' ? AlertCircle : CheckCircle
-  }
 
   return (
     <div className="min-h-screen w-full bg-[#FFFBF5] py-8 px-4 sm:px-6 lg:px-8">
@@ -311,7 +324,6 @@ export function SavingsView() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {activeGoals.map((goal) => {
                 const Icon = goal.icon
-                const StatusIcon = getStatusIcon(goal.status)
                 const statusColor = getStatusColor(goal.status)
                 const remaining = goal.targetAmount - goal.currentAmount
                 const now = new Date()
@@ -419,14 +431,19 @@ export function SavingsView() {
           currentAmount: editingGoal.currentAmount,
           targetAmount: editingGoal.targetAmount,
           targetDate: editingGoal.targetDate,
-          autoContribute: editingGoal.autoContribute,
-          contributionField: editingGoal.contributionField,
+          incomeLinks: editingIncomeLinks,
           linkedCategories: getCategoriesForGoal(editingGoal.id).map(gc => ({
             categoryId: gc.category_id,
             autoTag: gc.auto_tag,
           })),
         } : null}
         availableCategories={[...needCategories, ...wantCategories].map(c => ({
+          id: c.id,
+          name: c.name,
+          icon: c.icon,
+          color: c.color,
+        }))}
+        incomeCategories={incomeCategories.map(c => ({
           id: c.id,
           name: c.name,
           icon: c.icon,

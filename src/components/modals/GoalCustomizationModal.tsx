@@ -13,16 +13,9 @@ import {
 import { DatePicker } from '../ui/DatePicker'
 import { getIcon } from '../../lib/iconMap'
 
-// Paystub fields that can be linked to auto-contributions
-const PAYSTUB_CONTRIBUTION_FIELDS = [
-  { value: 'traditional_401k', label: '401(k) Contribution' },
-  { value: 'roth_401k', label: 'Roth 401(k) Contribution' },
-  { value: 'after_tax_401k', label: 'After-Tax 401(k)' },
-  { value: 'espp_contribution', label: 'ESPP Contribution' },
-  { value: 'hsa_contribution', label: 'HSA Contribution' },
-]
-
 type LinkedCategoryEntry = { categoryId: string; autoTag: boolean }
+
+export type IncomeLinkEntry = { categoryId: string; percentage: number }
 
 type AvailableCategory = {
   id: string
@@ -37,8 +30,7 @@ type EditingGoal = {
   currentAmount: number
   targetAmount: number
   targetDate: Date
-  autoContribute?: boolean
-  contributionField?: string | null
+  incomeLinks?: IncomeLinkEntry[]
   linkedCategories?: LinkedCategoryEntry[]
 }
 
@@ -46,6 +38,7 @@ type GoalCustomizationModalProps = {
   isOpen: boolean
   editingGoal?: EditingGoal | null
   availableCategories?: AvailableCategory[]
+  incomeCategories?: AvailableCategory[]
   onClose: () => void
   onSave: (customizedGoal: {
     id?: string
@@ -57,8 +50,7 @@ type GoalCustomizationModalProps = {
     goalType: string
     icon: string
     color: string
-    autoContribute?: boolean
-    contributionField?: string | null
+    incomeLinks?: IncomeLinkEntry[]
     linkedCategories?: LinkedCategoryEntry[]
   }) => void
 }
@@ -71,14 +63,14 @@ function nameToTag(name: string): string {
     .replace(/\s+/g, '-')
 }
 
-export function GoalCustomizationModal({ isOpen, editingGoal, availableCategories = [], onClose, onSave }: GoalCustomizationModalProps) {
+export function GoalCustomizationModal({ isOpen, editingGoal, availableCategories = [], incomeCategories = [], onClose, onSave }: GoalCustomizationModalProps) {
   const [goalName, setGoalName] = useState('')
   const [tag, setTag] = useState('')
   const [tagEdited, setTagEdited] = useState(false)
   const [targetAmount, setTargetAmount] = useState('')
   const [targetDate, setTargetDate] = useState('')
-  const [autoContribute, setAutoContribute] = useState(false)
-  const [contributionField, setContributionField] = useState('')
+  const [incomeLinks, setIncomeLinks] = useState<IncomeLinkEntry[]>([])
+  const [isIncomPickerOpen, setIsIncomePickerOpen] = useState(false)
   const [linkedCategories, setLinkedCategories] = useState<LinkedCategoryEntry[]>([])
   const [isCategoryPickerOpen, setIsCategoryPickerOpen] = useState(false)
 
@@ -113,8 +105,8 @@ export function GoalCustomizationModal({ isOpen, editingGoal, availableCategorie
       setTagEdited(false)
       setTargetAmount('')
       setTargetDate('')
-      setAutoContribute(false)
-      setContributionField('')
+      setIncomeLinks([])
+      setIsIncomePickerOpen(false)
       setLinkedCategories([])
       setIsCategoryPickerOpen(false)
     }
@@ -127,8 +119,7 @@ export function GoalCustomizationModal({ isOpen, editingGoal, availableCategorie
       setTag(nameToTag(editingGoal.name))
       setTargetAmount(editingGoal.targetAmount.toString())
       setTargetDate(formatDateForInput(editingGoal.targetDate))
-      setAutoContribute(editingGoal.autoContribute ?? false)
-      setContributionField(editingGoal.contributionField ?? '')
+      setIncomeLinks(editingGoal.incomeLinks ?? [])
       setLinkedCategories(editingGoal.linkedCategories ?? [])
     } else if (isOpen) {
       setTargetDate(getDefaultDate())
@@ -161,8 +152,7 @@ export function GoalCustomizationModal({ isOpen, editingGoal, availableCategorie
         goalType: 'custom',
         icon: 'PiggyBank',
         color: '#14B8A6',
-        autoContribute: autoContribute,
-        contributionField: autoContribute ? contributionField : null,
+        incomeLinks: incomeLinks.length > 0 ? incomeLinks : undefined,
         linkedCategories,
       })
       onClose()
@@ -421,57 +411,116 @@ export function GoalCustomizationModal({ isOpen, editingGoal, availableCategorie
                   </div>
                 )}
 
-                {/* Auto-Contribute Section (only for edit mode on existing goals that have it) */}
-                {isEditMode && editingGoal?.autoContribute !== undefined && (
+                {/* Auto-Contribute from Income */}
+                {incomeCategories.length > 0 && (
                   <div className="p-4 rounded-xl bg-[#6366F1]/5 border border-[#6366F1]/10">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <Zap className="w-4 h-4 text-[#6366F1]" />
-                        <span className="text-sm font-semibold text-[#1F1410]/70">
-                          Auto-contribute from paychecks
-                        </span>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Zap className="w-4 h-4 text-[#6366F1]" />
+                      <span className="text-sm font-semibold text-[#1F1410]/70">
+                        Auto-contribute from income
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#1F1410]/40 mb-3">
+                      When income transactions are imported, a percentage will auto-contribute to this goal.
+                    </p>
+
+                    {/* Linked income categories */}
+                    {incomeLinks.length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {incomeLinks.map(link => {
+                          const cat = incomeCategories.find(c => c.id === link.categoryId)
+                          if (!cat) return null
+                          const CatIcon = getIcon(cat.icon)
+                          return (
+                            <div
+                              key={link.categoryId}
+                              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#1F1410]/10 bg-white"
+                            >
+                              <div
+                                className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
+                                style={{ backgroundColor: `${cat.color}15` }}
+                              >
+                                <CatIcon className="w-3.5 h-3.5" style={{ color: cat.color }} />
+                              </div>
+                              <span className="text-sm font-medium text-[#1F1410] flex-1">{cat.name}</span>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="100"
+                                  value={link.percentage}
+                                  onChange={(e) => {
+                                    const val = Math.min(100, Math.max(1, parseInt(e.target.value) || 1))
+                                    setIncomeLinks(prev =>
+                                      prev.map(l =>
+                                        l.categoryId === link.categoryId
+                                          ? { ...l, percentage: val }
+                                          : l
+                                      )
+                                    )
+                                  }}
+                                  className="w-14 px-2 py-1 rounded-md border border-[#1F1410]/10 text-sm text-right text-[#1F1410] focus:outline-none focus:border-[#6366F1]/30"
+                                />
+                                <span className="text-xs text-[#1F1410]/40">%</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setIncomeLinks(prev => prev.filter(l => l.categoryId !== link.categoryId))}
+                                className="ml-1 text-[#1F1410]/30 hover:text-red-500 transition-colors"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )
+                        })}
                       </div>
+                    )}
+
+                    {/* Add income category */}
+                    <div className="relative">
                       <button
                         type="button"
-                        onClick={() => setAutoContribute(!autoContribute)}
-                        className={`relative w-11 h-6 rounded-full transition-colors ${
-                          autoContribute ? 'bg-[#6366F1]' : 'bg-[#1F1410]/20'
-                        }`}
+                        onClick={() => setIsIncomePickerOpen(!isIncomPickerOpen)}
+                        className="w-full px-4 py-2.5 rounded-xl border-2 border-dashed border-[#6366F1]/15 text-sm text-[#6366F1]/60 hover:border-[#6366F1]/30 hover:text-[#6366F1] transition-all"
                       >
-                        <span
-                          className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                            autoContribute ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
+                        + Add income type
                       </button>
-                    </div>
 
-                    {autoContribute && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                      >
-                        <label className="text-xs text-[#1F1410]/50 mb-1.5 block">
-                          Link to paycheck deduction
-                        </label>
-                        <select
-                          value={contributionField}
-                          onChange={(e) => setContributionField(e.target.value)}
-                          className="w-full px-3 py-2 rounded-lg border border-[#1F1410]/10 focus:border-[#6366F1]/30 focus:outline-none text-sm text-[#1F1410] bg-white"
-                        >
-                          <option value="">Select a field...</option>
-                          {PAYSTUB_CONTRIBUTION_FIELDS.map((field) => (
-                            <option key={field.value} value={field.value}>
-                              {field.label}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="text-xs text-[#1F1410]/40 mt-2">
-                          When you import a paycheck, contributions from this field will automatically be added to this goal.
-                        </p>
-                      </motion.div>
-                    )}
+                      {isIncomPickerOpen && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl border border-[#1F1410]/10 shadow-xl max-h-48 overflow-y-auto z-50">
+                          {incomeCategories
+                            .filter(c => !incomeLinks.some(l => l.categoryId === c.id))
+                            .map(cat => {
+                              const CatIcon = getIcon(cat.icon)
+                              return (
+                                <button
+                                  key={cat.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setIncomeLinks(prev => [
+                                      ...prev,
+                                      { categoryId: cat.id, percentage: 10 },
+                                    ])
+                                    setIsIncomePickerOpen(false)
+                                  }}
+                                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#1F1410]/5 transition-colors text-left"
+                                >
+                                  <div
+                                    className="w-5 h-5 rounded-md flex items-center justify-center"
+                                    style={{ backgroundColor: `${cat.color}15` }}
+                                  >
+                                    <CatIcon className="w-3 h-3" style={{ color: cat.color }} />
+                                  </div>
+                                  <span className="text-sm text-[#1F1410]">{cat.name}</span>
+                                </button>
+                              )
+                            })}
+                          {incomeCategories.filter(c => !incomeLinks.some(l => l.categoryId === c.id)).length === 0 && (
+                            <p className="text-xs text-[#1F1410]/40 py-3 text-center">All income types linked</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
