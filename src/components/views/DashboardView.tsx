@@ -79,7 +79,7 @@ export function DashboardView() {
 
   // Top 5 spending categories
   const topCategories = useMemo(() => {
-    const expenseTypes = new Set(['need', 'want', 'savings_funded'])
+    const expenseTypes = new Set(['need', 'want'])
     const filtered = categorySummaries.filter(cs => expenseTypes.has(cs.category_type))
     return filtered.slice(0, 5).map(cs => {
       const cat = findCategoryById(cs.category_id)

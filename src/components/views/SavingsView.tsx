@@ -25,6 +25,8 @@ import { GoalCustomizationModal } from '../modals/GoalCustomizationModal'
 import { GoalContributionHistory } from '../common/GoalContributionHistory'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
+import { useCategories } from '../../hooks/useCategories'
+import { useGoalCategories } from '../../hooks/useGoalCategories'
 
 // Map icon names to Lucide components (for editing existing goals)
 const iconNameToComponent: Record<string, LucideIcon> = {
@@ -113,8 +115,103 @@ const dbGoalToActiveGoal = (dbGoal: DbGoal): ActiveGoal => {
   }
 }
 
+function GoalSpendingSection({ goalId, goalColor }: { goalId: string; goalColor: string }) {
+  const [expenses, setExpenses] = useState<{ id: string; merchant: string; amount: number; date: string; category: string }[]>([])
+  const [expanded, setExpanded] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [totalSpent, setTotalSpent] = useState(0)
+
+  useEffect(() => {
+    async function fetchGoalExpenses() {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('id, merchant, amount, date, category')
+        .eq('goal_id', goalId)
+        .lt('amount', 0)
+        .order('date', { ascending: false })
+        .limit(expanded ? 10 : 0)
+
+      if (!error && data) {
+        if (expanded) setExpenses(data)
+        // Always compute total from all goal expenses
+        const { data: allTxs } = await supabase
+          .from('transactions')
+          .select('amount')
+          .eq('goal_id', goalId)
+          .lt('amount', 0)
+
+        if (allTxs) {
+          setTotalSpent(allTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0))
+        }
+      }
+      setLoading(false)
+    }
+
+    fetchGoalExpenses()
+  }, [goalId, expanded])
+
+  if (totalSpent === 0 && !loading) return null
+
+  return (
+    <div className="mt-4">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2 text-xs font-semibold text-[#1F1410]/50 hover:text-[#1F1410]/70 transition-colors"
+      >
+        <span className="uppercase tracking-wide">Goal Spending</span>
+        <span
+          className="px-2 py-0.5 rounded-full text-[10px] font-medium"
+          style={{ backgroundColor: `${goalColor}15`, color: goalColor }}
+        >
+          ${totalSpent.toLocaleString()}
+        </span>
+      </button>
+
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="mt-2 space-y-1">
+              {loading ? (
+                <p className="text-xs text-[#1F1410]/30 py-2">Loading...</p>
+              ) : expenses.length === 0 ? (
+                <p className="text-xs text-[#1F1410]/30 py-2">No expenses linked yet</p>
+              ) : (
+                expenses.map(tx => (
+                  <div key={tx.id} className="flex items-center justify-between py-1.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm text-[#1F1410] truncate">{tx.merchant}</span>
+                      <span className="text-xs text-[#1F1410]/30">{tx.category}</span>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <span className="text-xs text-[#1F1410]/40">
+                        {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                      <span className="text-sm font-medium text-[#1F1410]">
+                        -${Math.abs(tx.amount).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 export function SavingsView() {
   const { user } = useAuth()
+  const { needCategories, wantCategories } = useCategories()
+  const { getCategoriesForGoal, setCategoriesForGoal } = useGoalCategories()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [activeGoals, setActiveGoals] = useState<ActiveGoal[]>([])
   const [editingGoal, setEditingGoal] = useState<ActiveGoal | null>(null)
@@ -155,6 +252,7 @@ export function SavingsView() {
     color: string
     autoContribute?: boolean
     contributionField?: string | null
+    linkedCategories?: { categoryId: string; autoTag: boolean }[]
   }) => {
     const deadlineStr = customizedGoal.targetDate.toISOString().split('T')[0]
 
@@ -174,6 +272,10 @@ export function SavingsView() {
       if (error) {
         console.error('Error updating goal:', error)
       } else {
+        // Save linked categories
+        if (customizedGoal.linkedCategories) {
+          await setCategoriesForGoal(customizedGoal.id, customizedGoal.linkedCategories)
+        }
         await fetchGoals()
       }
       setEditingGoal(null)
@@ -184,7 +286,7 @@ export function SavingsView() {
         return
       }
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('goals')
         .insert({
           user_id: user.id,
@@ -199,10 +301,16 @@ export function SavingsView() {
           auto_contribute: customizedGoal.autoContribute ?? false,
           contribution_field: customizedGoal.contributionField ?? null,
         })
+        .select('id')
+        .single()
 
       if (error) {
         console.error('Error creating goal:', error)
-      } else {
+      } else if (data) {
+        // Save linked categories for the new goal
+        if (customizedGoal.linkedCategories && customizedGoal.linkedCategories.length > 0) {
+          await setCategoriesForGoal(data.id, customizedGoal.linkedCategories)
+        }
         await fetchGoals()
       }
     }
@@ -389,6 +497,9 @@ export function SavingsView() {
 
                     {/* Contribution History */}
                     <GoalContributionHistory goalId={goal.id} goalColor={goal.color} />
+
+                    {/* Goal Spending (expenses linked to this goal) */}
+                    <GoalSpendingSection goalId={goal.id} goalColor={goal.color} />
                   </div>
                 )
               })}
@@ -408,7 +519,17 @@ export function SavingsView() {
           targetDate: editingGoal.targetDate,
           autoContribute: editingGoal.autoContribute,
           contributionField: editingGoal.contributionField,
+          linkedCategories: getCategoriesForGoal(editingGoal.id).map(gc => ({
+            categoryId: gc.category_id,
+            autoTag: gc.auto_tag,
+          })),
         } : null}
+        availableCategories={[...needCategories, ...wantCategories].map(c => ({
+          id: c.id,
+          name: c.name,
+          icon: c.icon,
+          color: c.color,
+        }))}
         onClose={handleCloseModal}
         onSave={handleSaveGoal}
       />

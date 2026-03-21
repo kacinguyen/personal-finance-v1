@@ -12,7 +12,7 @@ export type MonthlySummary = {
   total_spending: number
   needs_spending: number
   wants_spending: number
-  savings_funded_spending: number
+  goal_funded_spending: number
   transfers_total: number
 
   // Derived
@@ -46,7 +46,7 @@ export type MonthlyCategorySummary = {
   user_id: string
   month: string
   category_id: string
-  category_type: 'need' | 'want' | 'income' | 'transfer' | 'savings_funded'
+  category_type: 'need' | 'want' | 'income' | 'transfer'
   total_amount: number
   transaction_count: number
   budget_amount: number | null

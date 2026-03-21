@@ -88,7 +88,7 @@ export function TransactionFeed() {
   // Convert DB categories to UI categories with resolved icons
   const uiCategories = useMemo<UICategory[]>(() => {
     return dbCategories
-      .filter(c => c.category_type === 'need' || c.category_type === 'want' || c.category_type === 'savings_funded')
+      .filter(c => c.category_type === 'need' || c.category_type === 'want')
       .map(dbCategoryToUI)
   }, [dbCategories])
 
@@ -127,11 +127,11 @@ export function TransactionFeed() {
     )
   }, [dbCategories])
 
-  // Expense category IDs (need/want/savings_funded) — used for velocity chart strict filtering
+  // Expense category IDs (need/want) — used for velocity chart strict filtering
   const expenseCategoryIds = useMemo(() => {
     return new Set(
       dbCategories
-        .filter(c => c.category_type === 'need' || c.category_type === 'want' || c.category_type === 'savings_funded')
+        .filter(c => c.category_type === 'need' || c.category_type === 'want')
         .map(c => c.id)
     )
   }, [dbCategories])

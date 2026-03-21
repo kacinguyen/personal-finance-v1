@@ -8,8 +8,10 @@ import {
   Zap,
   Tag,
   Calendar,
+  Link2,
 } from 'lucide-react'
 import { DatePicker } from '../ui/DatePicker'
+import { getIcon } from '../../lib/iconMap'
 
 // Paystub fields that can be linked to auto-contributions
 const PAYSTUB_CONTRIBUTION_FIELDS = [
@@ -20,6 +22,15 @@ const PAYSTUB_CONTRIBUTION_FIELDS = [
   { value: 'hsa_contribution', label: 'HSA Contribution' },
 ]
 
+type LinkedCategoryEntry = { categoryId: string; autoTag: boolean }
+
+type AvailableCategory = {
+  id: string
+  name: string
+  icon: string
+  color: string
+}
+
 type EditingGoal = {
   id: string
   name: string
@@ -28,11 +39,13 @@ type EditingGoal = {
   targetDate: Date
   autoContribute?: boolean
   contributionField?: string | null
+  linkedCategories?: LinkedCategoryEntry[]
 }
 
 type GoalCustomizationModalProps = {
   isOpen: boolean
   editingGoal?: EditingGoal | null
+  availableCategories?: AvailableCategory[]
   onClose: () => void
   onSave: (customizedGoal: {
     id?: string
@@ -46,6 +59,7 @@ type GoalCustomizationModalProps = {
     color: string
     autoContribute?: boolean
     contributionField?: string | null
+    linkedCategories?: LinkedCategoryEntry[]
   }) => void
 }
 
@@ -57,7 +71,7 @@ function nameToTag(name: string): string {
     .replace(/\s+/g, '-')
 }
 
-export function GoalCustomizationModal({ isOpen, editingGoal, onClose, onSave }: GoalCustomizationModalProps) {
+export function GoalCustomizationModal({ isOpen, editingGoal, availableCategories = [], onClose, onSave }: GoalCustomizationModalProps) {
   const [goalName, setGoalName] = useState('')
   const [tag, setTag] = useState('')
   const [tagEdited, setTagEdited] = useState(false)
@@ -65,6 +79,8 @@ export function GoalCustomizationModal({ isOpen, editingGoal, onClose, onSave }:
   const [targetDate, setTargetDate] = useState('')
   const [autoContribute, setAutoContribute] = useState(false)
   const [contributionField, setContributionField] = useState('')
+  const [linkedCategories, setLinkedCategories] = useState<LinkedCategoryEntry[]>([])
+  const [isCategoryPickerOpen, setIsCategoryPickerOpen] = useState(false)
 
   const isEditMode = !!editingGoal
 
@@ -99,6 +115,8 @@ export function GoalCustomizationModal({ isOpen, editingGoal, onClose, onSave }:
       setTargetDate('')
       setAutoContribute(false)
       setContributionField('')
+      setLinkedCategories([])
+      setIsCategoryPickerOpen(false)
     }
   }, [isOpen])
 
@@ -111,6 +129,7 @@ export function GoalCustomizationModal({ isOpen, editingGoal, onClose, onSave }:
       setTargetDate(formatDateForInput(editingGoal.targetDate))
       setAutoContribute(editingGoal.autoContribute ?? false)
       setContributionField(editingGoal.contributionField ?? '')
+      setLinkedCategories(editingGoal.linkedCategories ?? [])
     } else if (isOpen) {
       setTargetDate(getDefaultDate())
     }
@@ -144,6 +163,7 @@ export function GoalCustomizationModal({ isOpen, editingGoal, onClose, onSave }:
         color: '#14B8A6',
         autoContribute: autoContribute,
         contributionField: autoContribute ? contributionField : null,
+        linkedCategories,
       })
       onClose()
     }
@@ -291,6 +311,115 @@ export function GoalCustomizationModal({ isOpen, editingGoal, onClose, onSave }:
                     placeholder="Select target date"
                   />
                 </div>
+
+                {/* Linked Categories */}
+                {availableCategories.length > 0 && (
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-[#1F1410]/70 mb-2">
+                      <Link2 className="w-4 h-4" />
+                      Linked Categories
+                    </label>
+                    <p className="text-xs text-[#1F1410]/40 mb-3">
+                      Expenses in these categories will be linked to this goal and excluded from your budget.
+                    </p>
+
+                    {/* Selected categories */}
+                    {linkedCategories.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {linkedCategories.map(lc => {
+                          const cat = availableCategories.find(c => c.id === lc.categoryId)
+                          if (!cat) return null
+                          const CatIcon = getIcon(cat.icon)
+                          return (
+                            <div
+                              key={lc.categoryId}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#1F1410]/10 bg-white"
+                            >
+                              <CatIcon className="w-3.5 h-3.5" style={{ color: cat.color }} />
+                              <span className="text-xs font-medium text-[#1F1410]">{cat.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setLinkedCategories(prev =>
+                                    prev.map(p =>
+                                      p.categoryId === lc.categoryId
+                                        ? { ...p, autoTag: !p.autoTag }
+                                        : p
+                                    )
+                                  )
+                                }}
+                                className={`ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                                  lc.autoTag
+                                    ? 'bg-[#14B8A6]/15 text-[#14B8A6]'
+                                    : 'bg-[#1F1410]/5 text-[#1F1410]/40'
+                                }`}
+                              >
+                                {lc.autoTag ? 'Auto' : 'Manual'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setLinkedCategories(prev =>
+                                    prev.filter(p => p.categoryId !== lc.categoryId)
+                                  )
+                                }}
+                                className="ml-0.5 text-[#1F1410]/30 hover:text-red-500 transition-colors"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Add category button / dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setIsCategoryPickerOpen(!isCategoryPickerOpen)}
+                        className="w-full px-4 py-2.5 rounded-xl border-2 border-dashed border-[#1F1410]/10 text-sm text-[#1F1410]/40 hover:border-[#1F1410]/20 hover:text-[#1F1410]/60 transition-all"
+                      >
+                        + Add category
+                      </button>
+
+                      {isCategoryPickerOpen && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl border border-[#1F1410]/10 shadow-xl max-h-48 overflow-y-auto z-50">
+                          {availableCategories
+                            .filter(c => !linkedCategories.some(lc => lc.categoryId === c.id))
+                            .map(cat => {
+                              const CatIcon = getIcon(cat.icon)
+                              return (
+                                <button
+                                  key={cat.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setLinkedCategories(prev => [
+                                      ...prev,
+                                      { categoryId: cat.id, autoTag: true },
+                                    ])
+                                    setIsCategoryPickerOpen(false)
+                                  }}
+                                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#1F1410]/5 transition-colors text-left"
+                                >
+                                  <div
+                                    className="w-5 h-5 rounded-md flex items-center justify-center"
+                                    style={{ backgroundColor: `${cat.color}15` }}
+                                  >
+                                    <CatIcon className="w-3 h-3" style={{ color: cat.color }} />
+                                  </div>
+                                  <span className="text-sm text-[#1F1410]">{cat.name}</span>
+                                </button>
+                              )
+                            })}
+                          {availableCategories.filter(c => !linkedCategories.some(lc => lc.categoryId === c.id)).length === 0 && (
+                            <p className="text-xs text-[#1F1410]/40 py-3 text-center">All categories linked</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Auto-Contribute Section (only for edit mode on existing goals that have it) */}
                 {isEditMode && editingGoal?.autoContribute !== undefined && (

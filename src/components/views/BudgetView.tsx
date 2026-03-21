@@ -162,7 +162,7 @@ const DEFAULT_BUDGET_AMOUNTS: Record<string, number> = {
 
 export function BudgetView() {
   const { userId } = useUser()
-  const { createCategory: createDbCategory, updateCategory: updateDbCategory, updateCategoryOrder, deleteCategory: deleteDbCategory, seedDefaultCategories, needCategories, wantCategories, incomeCategories, transferCategories, savingsFundedCategories, loading: categoriesLoading } = useCategories()
+  const { createCategory: createDbCategory, updateCategory: updateDbCategory, updateCategoryOrder, deleteCategory: deleteDbCategory, seedDefaultCategories, needCategories, wantCategories, incomeCategories, transferCategories, loading: categoriesLoading } = useCategories()
   const [budgets, setBudgets] = useState<CategoryBudget[]>([])
   const [loading, setLoading] = useState(true)
   const [seeding, setSeeding] = useState(false)
@@ -256,7 +256,7 @@ export function BudgetView() {
 
     if (data && data.length > 0) {
       // Auto-create $0 budgets for all categories that don't have one yet
-      const allExpenseCategories = [...needCategories, ...wantCategories, ...incomeCategories, ...transferCategories, ...savingsFundedCategories]
+      const allExpenseCategories = [...needCategories, ...wantCategories, ...incomeCategories, ...transferCategories]
       const existingCategoryIds = new Set(data.map(b => b.category_id).filter(Boolean))
       const missingCategories = allExpenseCategories.filter(c => !existingCategoryIds.has(c.id))
 
@@ -304,7 +304,7 @@ export function BudgetView() {
       setLoading(false)
       await seedDefaultData()
     }
-  }, [seedDefaultData, categoriesLoading, needCategories, wantCategories, incomeCategories, transferCategories, savingsFundedCategories, userId])
+  }, [seedDefaultData, categoriesLoading, needCategories, wantCategories, incomeCategories, transferCategories, userId])
 
   // Fetch savings goals from database
   const fetchSavingsGoals = useCallback(async () => {

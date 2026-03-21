@@ -31,6 +31,7 @@ type AddTransactionModalProps = {
   incomeCategories: UICategory[]
   transferCategories: UICategory[]
   goals?: { id: string; name: string; color: string }[]
+  categoryGoalMap?: Map<string, { goalId: string; goalName: string }>
   defaultDate?: string
   editTransaction?: TransactionFormData | null
 }
@@ -44,6 +45,7 @@ export function AddTransactionModal({
   incomeCategories,
   transferCategories,
   goals = [],
+  categoryGoalMap,
   defaultDate,
   editTransaction,
 }: AddTransactionModalProps) {
@@ -59,6 +61,23 @@ export function AddTransactionModal({
   const [error, setError] = useState<string | null>(null)
   const [transactionType, setTransactionType] = useState<TransactionType>('expense')
   const [goalId, setGoalId] = useState<string | null>(null)
+  const [goalAutoLinked, setGoalAutoLinked] = useState(false)
+
+  // Auto-suggest goal when selecting a category that has a goal mapping
+  const handleCategorySelect = (cat: UICategory | null) => {
+    setSelectedCategory(cat)
+    setIsCategoryDropdownOpen(false)
+
+    if (cat?.id && categoryGoalMap?.has(cat.id)) {
+      const mapped = categoryGoalMap.get(cat.id)!
+      setGoalId(mapped.goalId)
+      setGoalAutoLinked(true)
+    } else if (goalAutoLinked) {
+      // Clear auto-linked goal if category changes to unmapped
+      setGoalId(null)
+      setGoalAutoLinked(false)
+    }
+  }
 
   const isEditing = !!editTransaction?.id
   const merchantInputRef = useRef<HTMLInputElement>(null)
@@ -382,10 +401,7 @@ export function AddTransactionModal({
                           {/* No category option */}
                           <button
                             type="button"
-                            onClick={() => {
-                              setSelectedCategory(null)
-                              setIsCategoryDropdownOpen(false)
-                            }}
+                            onClick={() => handleCategorySelect(null)}
                             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-[#1F1410]/5 transition-colors text-left border-b border-[#1F1410]/5"
                           >
                             <div className="w-5 h-5 rounded-md bg-[#1F1410]/5 flex items-center justify-center">
@@ -400,10 +416,7 @@ export function AddTransactionModal({
                               {/* Parent category as header (clickable) */}
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setSelectedCategory(group.parent)
-                                  setIsCategoryDropdownOpen(false)
-                                }}
+                                onClick={() => handleCategorySelect(group.parent)}
                                 className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#1F1410]/5 transition-colors text-left"
                               >
                                 <div
@@ -425,10 +438,7 @@ export function AddTransactionModal({
                                 <button
                                   key={child.id}
                                   type="button"
-                                  onClick={() => {
-                                    setSelectedCategory(child)
-                                    setIsCategoryDropdownOpen(false)
-                                  }}
+                                  onClick={() => handleCategorySelect(child)}
                                   className="w-full flex items-center gap-2 pl-7 pr-3 py-1.5 hover:bg-[#1F1410]/5 transition-colors text-left"
                                 >
                                   <div
@@ -496,7 +506,10 @@ export function AddTransactionModal({
                       <>
                         <select
                           value={goalId || ''}
-                          onChange={(e) => setGoalId(e.target.value || null)}
+                          onChange={(e) => {
+                            setGoalId(e.target.value || null)
+                            setGoalAutoLinked(false)
+                          }}
                           className={`w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#1F1410]/10 focus:border-[#F59E0B]/30 focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/10 transition-all appearance-none bg-white ${goalId ? 'text-[#1F1410]' : 'text-[#1F1410]/30'}`}
                         >
                           <option value="">No goal</option>
@@ -514,6 +527,11 @@ export function AddTransactionModal({
                       </p>
                     )}
                   </div>
+                  {goalAutoLinked && goalId && (
+                    <p className="text-xs text-[#14B8A6] mt-1.5">
+                      Auto-linked to {goals.find(g => g.id === goalId)?.name ?? 'goal'} based on category
+                    </p>
+                  )}
                 </div>
 
                 {/* Error Message */}

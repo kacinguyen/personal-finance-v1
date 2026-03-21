@@ -25,7 +25,7 @@ function isLiabilityType(type: AccountType): boolean {
 export type FinancialSnapshot = {
   currentMonth: {
     income: { total: number; salary: number; other: number }
-    spending: { total: number; needs: number; wants: number; savingsFunded: number }
+    spending: { total: number; needs: number; wants: number; goalFunded: number }
     netSavings: number
     daysRemaining: number
     budgetUtilization: { needsPct: number; wantsPct: number; totalPct: number }
@@ -228,7 +228,7 @@ export async function buildFinancialSnapshot(
         total: current.total_spending || 0,
         needs: current.needs_spending || 0,
         wants: current.wants_spending || 0,
-        savingsFunded: current.savings_funded_spending || 0,
+        goalFunded: current.goal_funded_spending || 0,
       },
       netSavings: current.net_savings || 0,
       daysRemaining: getDaysRemainingInMonth(),
@@ -301,7 +301,7 @@ export function serializeSnapshot(s: FinancialSnapshot): string {
   // Current month
   lines.push(`## This Month (${s.currentMonth.daysRemaining} days remaining)`)
   lines.push(`Income: ${fmt(s.currentMonth.income.total)} (salary ${fmt(s.currentMonth.income.salary)}, other ${fmt(s.currentMonth.income.other)})`)
-  lines.push(`Spending: ${fmt(s.currentMonth.spending.total)} (needs ${fmt(s.currentMonth.spending.needs)}, wants ${fmt(s.currentMonth.spending.wants)}, savings-funded ${fmt(s.currentMonth.spending.savingsFunded)})`)
+  lines.push(`Spending: ${fmt(s.currentMonth.spending.total)} (needs ${fmt(s.currentMonth.spending.needs)}, wants ${fmt(s.currentMonth.spending.wants)}, goal-funded ${fmt(s.currentMonth.spending.goalFunded)})`)
   lines.push(`Net savings: ${fmt(s.currentMonth.netSavings)}`)
   lines.push(`Budget utilization: needs ${s.currentMonth.budgetUtilization.needsPct}%, wants ${s.currentMonth.budgetUtilization.wantsPct}%, total ${s.currentMonth.budgetUtilization.totalPct}%`)
   lines.push('')

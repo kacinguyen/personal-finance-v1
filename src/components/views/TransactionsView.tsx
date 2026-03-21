@@ -23,6 +23,7 @@ import type { AccountType } from '../../types/account'
 import { supabase } from '../../lib/supabase'
 import { getIcon, DEFAULT_COLOR } from '../../lib/iconMap'
 import { useCategories } from '../../hooks/useCategories'
+import { useGoalCategories } from '../../hooks/useGoalCategories'
 import { useMerchantRules } from '../../hooks/useMerchantRules'
 import type { MatchType } from '../../hooks/useMerchantRules'
 import { MonthPicker } from '../common/MonthPicker'
@@ -104,6 +105,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
 
   const { userId } = useUser()
   const { categories: dbCategories, findCategoryByName, refetch: refetchCategories, transferCategories } = useCategories()
+  const { goalCategories } = useGoalCategories()
   const { createRule, findRuleForMerchant } = useMerchantRules()
   const [transactions, setTransactions] = useState<UITransaction[]>([])
   const [rawTransactions, setRawTransactions] = useState<DBTransaction[]>([])
@@ -147,12 +149,26 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
     return dbCategories.map(dbCategoryToUI)
   }, [dbCategories])
 
-  // Categories for expenses only (need/want/savings_funded) for adding transactions
+  // Categories for expenses only (need/want) for adding transactions
   const expenseCategories = useMemo<UICategory[]>(() => {
     return dbCategories
-      .filter(c => c.category_type === 'need' || c.category_type === 'want' || c.category_type === 'savings_funded')
+      .filter(c => c.category_type === 'need' || c.category_type === 'want')
       .map(dbCategoryToUI)
   }, [dbCategories])
+
+  // Map category IDs to their auto-tagged goals (for auto-suggesting goals in the add modal)
+  const categoryGoalMap = useMemo(() => {
+    const map = new Map<string, { goalId: string; goalName: string }>()
+    for (const gc of goalCategories) {
+      if (gc.auto_tag) {
+        const goal = goals.find(g => g.id === gc.goal_id)
+        if (goal) {
+          map.set(gc.category_id, { goalId: goal.id, goalName: goal.name })
+        }
+      }
+    }
+    return map
+  }, [goalCategories, goals])
 
   // Income categories for the modal
   const incomeUiCategories = useMemo<UICategory[]>(() => {
@@ -609,6 +625,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
       const newAmount = updates.goal_contribution_amount !== undefined
         ? updates.goal_contribution_amount
         : (tx as any)?.goal_contribution_amount
+      const txAmount = tx?.amount ?? 0
 
       // Delete any existing contribution for this transaction
       await supabase
@@ -617,8 +634,9 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
         .eq('transaction_id', transactionId)
         .eq('user_id', userId)
 
-      // Create new contribution if goal is set with an amount
-      if (newGoalId && newAmount && newAmount > 0) {
+      // Only create contribution for income/positive transactions — expenses are
+      // tracked via goal_id on the transaction but don't add to goal progress
+      if (newGoalId && newAmount && newAmount > 0 && txAmount > 0) {
         const txDate = tx?.date || new Date().toISOString().split('T')[0]
         const { error: contribError } = await supabase
           .from('goal_contributions')
@@ -1214,6 +1232,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
         incomeCategories={incomeUiCategories}
         transferCategories={transferUiCategories}
         goals={goals}
+        categoryGoalMap={categoryGoalMap}
         defaultDate={new Date().toISOString().split('T')[0]}
         editTransaction={editingTransaction}
       />

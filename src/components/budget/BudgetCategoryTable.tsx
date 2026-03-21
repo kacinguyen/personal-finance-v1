@@ -9,7 +9,6 @@ import {
   Sparkles,
   TrendingUp,
   ArrowLeftRight,
-  PiggyBank,
   ChevronDown,
   GripVertical,
   type LucideIcon,
@@ -28,7 +27,6 @@ const TYPE_CONFIG: {
   { type: 'need', label: 'Need', color: '#10B981', icon: Shield },
   { type: 'want', label: 'Want', color: '#A855F7', icon: Sparkles },
   { type: 'income', label: 'Income', color: '#10B981', icon: TrendingUp },
-  { type: 'savings_funded', label: 'Savings', color: '#38BDF8', icon: PiggyBank },
   { type: 'transfer', label: 'Transfer', color: '#8B5CF6', icon: ArrowLeftRight },
 ]
 

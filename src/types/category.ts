@@ -5,7 +5,7 @@ import type { LucideIcon } from 'lucide-react'
  * Maps to the Supabase categories table schema
  */
 
-export type CategoryType = 'need' | 'want' | 'income' | 'transfer' | 'savings_funded'
+export type CategoryType = 'need' | 'want' | 'income' | 'transfer'
 
 /**
  * UI Category type used by components
@@ -234,18 +234,18 @@ export const DEFAULT_CATEGORIES: DefaultCategoryDef[] = [
     is_active: true,
     is_budgetable: false,
   },
-  // Travel (Savings-Funded)
+  // Travel (goal-funded — excluded from budget when linked to a goal)
   {
     name: 'Travel',
     icon: 'Plane',
     color: '#F59E0B',
-    category_type: 'savings_funded',
+    category_type: 'want',
     is_system: true,
     is_active: true,
     children: [
-      { name: 'Flights', icon: 'Plane', color: '#F59E0B', category_type: 'savings_funded', is_system: true, is_active: true },
-      { name: 'Hotels', icon: 'Hotel', color: '#8B5CF6', category_type: 'savings_funded', is_system: true, is_active: true },
-      { name: 'Activities', icon: 'MapPin', color: '#10B981', category_type: 'savings_funded', is_system: true, is_active: true },
+      { name: 'Flights', icon: 'Plane', color: '#F59E0B', category_type: 'want', is_system: true, is_active: true },
+      { name: 'Hotels', icon: 'Hotel', color: '#8B5CF6', category_type: 'want', is_system: true, is_active: true },
+      { name: 'Activities', icon: 'MapPin', color: '#10B981', category_type: 'want', is_system: true, is_active: true },
     ],
   },
   // Transfers

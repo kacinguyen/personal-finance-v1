@@ -24,7 +24,7 @@ export function getMonthlySummaryTool(supabase: SupabaseClient, userId: string) 
       return {
         month: data.month,
         income: { total: data.total_income, salary: data.salary_income, other: data.total_income - data.salary_income },
-        spending: { total: data.total_spending, needs: data.needs_spending, wants: data.wants_spending, savingsFunded: data.savings_funded_spending },
+        spending: { total: data.total_spending, needs: data.needs_spending, wants: data.wants_spending, goalFunded: data.goal_funded_spending },
         netSavings: data.net_savings,
         transactionCount: data.transaction_count,
         budget: { total: data.total_budget, needs: data.needs_budget, wants: data.wants_budget },

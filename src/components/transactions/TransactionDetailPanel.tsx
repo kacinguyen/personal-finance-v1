@@ -315,6 +315,7 @@ function GoalContributionEditor({
   currentGoalId,
   currentAmount,
   transactionAmount,
+  isExpense,
   onSave,
   onCancel,
 }: {
@@ -322,6 +323,7 @@ function GoalContributionEditor({
   currentGoalId: string | null
   currentAmount: number | null
   transactionAmount: number
+  isExpense: boolean
   onSave: (goalId: string | null, amount: number | null) => Promise<void>
   onCancel: () => void
 }) {
@@ -329,10 +331,10 @@ function GoalContributionEditor({
   const [amount, setAmount] = useState(currentAmount ? String(currentAmount) : '')
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Default to full transaction amount when selecting a new goal
+  // Default to full transaction amount when selecting a new goal (income only)
   const handleGoalChange = (goalId: string) => {
     setSelectedGoalId(goalId)
-    if (goalId && !amount) {
+    if (!isExpense && goalId && !amount) {
       setAmount(String(transactionAmount))
     }
     if (!goalId) {
@@ -342,6 +344,13 @@ function GoalContributionEditor({
 
   const handleSave = async () => {
     const goalId = selectedGoalId || null
+
+    // Expenses: no contribution amount, just link the goal
+    if (isExpense) {
+      await onSave(goalId, null)
+      return
+    }
+
     const parsedAmount = amount ? parseFloat(amount) : null
 
     // Validate: must be a positive number within the transaction amount
@@ -378,7 +387,7 @@ function GoalContributionEditor({
           </option>
         ))}
       </select>
-      {selectedGoalId && (
+      {selectedGoalId && !isExpense && (
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-[#1F1410]/40">$</span>
@@ -397,6 +406,11 @@ function GoalContributionEditor({
             of ${transactionAmount.toLocaleString()}
           </span>
         </div>
+      )}
+      {selectedGoalId && isExpense && (
+        <p className="text-xs text-[#1F1410]/40">
+          This expense will be tracked against the goal without affecting its balance.
+        </p>
       )}
       <div className="flex gap-1.5">
         <button
@@ -911,6 +925,7 @@ export function TransactionDetailPanel({
                       currentGoalId={selectedTransaction.goal_id}
                       currentAmount={selectedTransaction.goal_contribution_amount}
                       transactionAmount={Math.abs(selectedTransaction.amount)}
+                      isExpense={selectedTransaction.type === 'expense'}
                       onSave={async (goalId, contributionAmount) => {
                         setSaving(true)
                         try {
@@ -941,7 +956,11 @@ export function TransactionDetailPanel({
                               <PiggyBank className="w-3 h-3" />
                               {goal.name}
                             </span>
-                            {selectedTransaction.goal_contribution_amount ? (
+                            {selectedTransaction.type === 'expense' ? (
+                              <span className="text-xs text-[#1F1410]/40 font-medium">
+                                Expense tracked against goal
+                              </span>
+                            ) : selectedTransaction.goal_contribution_amount ? (
                               <span className="text-xs text-[#10B981] font-medium">
                                 ${selectedTransaction.goal_contribution_amount.toLocaleString()} contributed
                               </span>
