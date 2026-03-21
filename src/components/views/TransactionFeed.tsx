@@ -9,6 +9,8 @@ import {
   CircleDollarSign,
   CreditCard,
   ListFilter,
+  AlertTriangle,
+  CheckCircle2,
 } from 'lucide-react'
 import { CategoryProgressList } from '../common/CategoryProgressList'
 import type { UICategory } from '../../types/category'
@@ -420,6 +422,19 @@ export function TransactionFeed() {
     }
   }, [categoriesWithTotals, totalSpent, monthData, expectedIncome])
 
+  const overBudgetCategories = useMemo(() => {
+    return categoriesWithTotals
+      .filter(cat => cat.budget > 0 && cat.total > cat.budget)
+      .map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        icon: cat.icon,
+        color: cat.color,
+        overage: Math.round((cat.total - cat.budget) * 100) / 100,
+      }))
+      .sort((a, b) => b.overage - a.overage)
+  }, [categoriesWithTotals])
+
   return (
     <div className="min-h-screen w-full bg-[#FFFBF5] py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto">
@@ -436,12 +451,15 @@ export function TransactionFeed() {
           </div>
         </motion.div>
 
+        {/* Overview + Insight Cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr,320px] gap-6 mb-8 items-start">
+
         {/* Budget Tracking Insight */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.2 }}
-          className="mb-8 bg-white rounded-2xl p-6 border border-[#1F1410]/5"
+          className="bg-white rounded-2xl p-6 border border-[#1F1410]/5"
         >
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-4">
             {/* Days Remaining */}
@@ -566,6 +584,59 @@ export function TransactionFeed() {
             </div>
           </div>
         </motion.div>
+
+        {/* Over Budget Insight Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.3 }}
+          className="bg-white rounded-2xl p-5 border border-[#1F1410]/5"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            {overBudgetCategories.length > 0 ? (
+              <AlertTriangle className="w-4 h-4 text-[#FF6B6B]" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
+            )}
+            <span className="text-xs uppercase tracking-widest text-[#1F1410]/30 font-medium">
+              {overBudgetCategories.length > 0 ? 'Over Budget' : 'Budget Health'}
+            </span>
+          </div>
+
+          {overBudgetCategories.length > 0 ? (
+            <div className="space-y-3">
+              {overBudgetCategories.map((cat) => {
+                const CatIcon = cat.icon
+                return (
+                  <div key={cat.id} className="flex items-center gap-3">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: `${cat.color}15` }}
+                    >
+                      <CatIcon className="w-4 h-4" style={{ color: cat.color }} />
+                    </div>
+                    <span className="text-sm font-medium text-[#1F1410] flex-1 truncate">
+                      {cat.name}
+                    </span>
+                    <span className="text-sm font-semibold text-[#FF6B6B] flex-shrink-0">
+                      ${cat.overage.toLocaleString()} over
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-6">
+              <div className="w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center mx-auto mb-3">
+                <CheckCircle2 className="w-5 h-5 text-[#10B981]" />
+              </div>
+              <p className="text-sm font-medium text-[#1F1410]/60">All categories on track</p>
+              <p className="text-xs text-[#1F1410]/30 mt-1">No categories have exceeded their budget</p>
+            </div>
+          )}
+        </motion.div>
+
+        </div>{/* end grid */}
 
         {/* Spending Velocity Chart */}
         <SpendingVelocityChart
