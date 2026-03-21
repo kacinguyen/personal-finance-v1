@@ -476,23 +476,35 @@ export function GoalCustomizationModal({ isOpen, editingGoal, availableCategorie
                 )}
 
                 {/* Summary */}
-                {goalName && targetAmount && parseFloat(targetAmount) > 0 && targetDate && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className="p-4 rounded-xl"
-                    style={{ backgroundColor: `${goalColor}08` }}
-                  >
-                    <p className="text-sm text-[#1F1410]/60 mb-1">You'll need to save approximately:</p>
-                    <p className="text-2xl font-bold" style={{ color: goalColor }}>
-                      ${Math.round(parseFloat(targetAmount) / getMonthsUntilTarget()).toLocaleString()}
-                      <span className="text-base font-medium text-[#1F1410]/50"> / month</span>
-                    </p>
-                    <p className="text-xs text-[#1F1410]/40 mt-1">
-                      {getMonthsUntilTarget()} months until {new Date(targetDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                    </p>
-                  </motion.div>
-                )}
+                {goalName && targetAmount && parseFloat(targetAmount) > 0 && targetDate && (() => {
+                  const target = parseFloat(targetAmount)
+                  const currentSaved = editingGoal?.currentAmount ?? 0
+                  const remaining = Math.max(0, target - currentSaved)
+                  const monthsLeft = getMonthsUntilTarget()
+                  const monthlyNeeded = remaining > 0 ? remaining / monthsLeft : 0
+                  return (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="p-4 rounded-xl"
+                      style={{ backgroundColor: `${goalColor}08` }}
+                    >
+                      <p className="text-sm text-[#1F1410]/60 mb-1">
+                        {isEditMode ? "To reach your goal, save approximately:" : "You'll need to save approximately:"}
+                      </p>
+                      <p className="text-2xl font-bold" style={{ color: goalColor }}>
+                        ${monthlyNeeded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="text-base font-medium text-[#1F1410]/50"> / month</span>
+                      </p>
+                      <p className="text-xs text-[#1F1410]/40 mt-1">
+                        {isEditMode && currentSaved > 0
+                          ? `$${remaining.toLocaleString()} remaining · ${monthsLeft} months until ${new Date(targetDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+                          : `${monthsLeft} months until ${new Date(targetDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`
+                        }
+                      </p>
+                    </motion.div>
+                  )
+                })()}
               </div>
 
               {/* Actions */}
