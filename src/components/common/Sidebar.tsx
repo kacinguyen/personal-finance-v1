@@ -60,16 +60,16 @@ const tabs = [
     color: TAB_COLORS.budget,
   },
   {
-    id: 'accounts' as Tab,
-    label: 'Accounts',
-    icon: Landmark,
-    color: TAB_COLORS.accounts,
-  },
-  {
     id: 'savings' as Tab,
     label: 'Savings',
     icon: PiggyBank,
     color: TAB_COLORS.savings,
+  },
+  {
+    id: 'accounts' as Tab,
+    label: 'Accounts',
+    icon: Landmark,
+    color: TAB_COLORS.accounts,
   },
   {
     id: 'chat' as Tab,

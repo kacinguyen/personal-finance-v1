@@ -24,8 +24,8 @@ const tabs = [
   { id: 'income' as Tab, label: 'Income', icon: TrendingUp, color: TAB_COLORS.income },
   { id: 'expenses' as Tab, label: 'Expenses', icon: Receipt, color: TAB_COLORS.expenses },
   { id: 'budget' as Tab, label: 'Budget', icon: Target, color: TAB_COLORS.budget },
-  { id: 'accounts' as Tab, label: 'Accounts', icon: Landmark, color: TAB_COLORS.accounts },
   { id: 'savings' as Tab, label: 'Savings', icon: PiggyBank, color: TAB_COLORS.savings },
+  { id: 'accounts' as Tab, label: 'Accounts', icon: Landmark, color: TAB_COLORS.accounts },
   { id: 'chat' as Tab, label: 'Chat', icon: MessageCircle, color: TAB_COLORS.accounts },
 ]
 
