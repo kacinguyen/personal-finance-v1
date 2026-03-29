@@ -140,6 +140,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
   const [accountTypeMap, setAccountTypeMap] = useState<AccountTypeMap>(new Map())
   const [syncing, setSyncing] = useState(false)
   const [goals, setGoals] = useState<{ id: string; name: string; color: string }[]>([])
+  const [goalIncomeLinks, setGoalIncomeLinks] = useState<{ goal_id: string; category_id: string; percentage: number }[]>([])
   const [isSplitWithOthersModalOpen, setIsSplitWithOthersModalOpen] = useState(false)
   const [isResolveReimbursementModalOpen, setIsResolveReimbursementModalOpen] = useState(false)
   const [pendingReimbursements, setPendingReimbursements] = useState<PendingReimbursement[]>([])
@@ -339,15 +340,21 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
     fetchAccountTypes()
   }, [])
 
-  // Fetch active goals for linking
+  // Fetch active goals and income links for linking
   useEffect(() => {
     async function fetchGoals() {
-      const { data } = await supabase
-        .from('goals')
-        .select('id, name, color')
-        .eq('is_active', true)
-        .order('name')
-      if (data) setGoals(data)
+      const [goalsRes, linksRes] = await Promise.all([
+        supabase
+          .from('goals')
+          .select('id, name, color')
+          .eq('is_active', true)
+          .order('name'),
+        supabase
+          .from('goal_income_links')
+          .select('goal_id, category_id, percentage'),
+      ])
+      if (goalsRes.data) setGoals(goalsRes.data)
+      if (linksRes.data) setGoalIncomeLinks(linksRes.data)
     }
     fetchGoals()
   }, [])
@@ -1216,6 +1223,8 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
             onCreateMerchantRule={handleCreateMerchantRule}
             hasRuleForMerchant={hasRuleForMerchant}
             onNavigateToRules={() => onNavigate?.('profile')}
+            goalIncomeLinks={goalIncomeLinks}
+            onNavigateToSavings={() => onNavigate?.('savings')}
             onResolveReimbursement={() => setIsResolveReimbursementModalOpen(true)}
             pendingReimbursement={selectedReimbursement}
           />

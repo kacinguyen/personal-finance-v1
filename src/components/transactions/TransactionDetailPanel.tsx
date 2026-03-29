@@ -56,6 +56,8 @@ type TransactionDetailPanelProps = {
   onCreateMerchantRule?: (pattern: string, matchType: MatchType, categoryId: string) => Promise<boolean>
   hasRuleForMerchant?: (merchant: string) => boolean
   onNavigateToRules?: () => void
+  goalIncomeLinks?: { goal_id: string; category_id: string; percentage: number }[]
+  onNavigateToSavings?: () => void
   onResolveReimbursement?: () => void
   pendingReimbursement?: PendingReimbursement | null
 }
@@ -446,6 +448,8 @@ export function TransactionDetailPanel({
   onCreateMerchantRule,
   hasRuleForMerchant,
   onNavigateToRules,
+  goalIncomeLinks,
+  onNavigateToSavings,
   onResolveReimbursement,
   pendingReimbursement,
 }: TransactionDetailPanelProps) {
@@ -463,6 +467,12 @@ export function TransactionDetailPanel({
     categoryId: string
   } | null>(null)
 
+  // Income auto-contribution banner state (shown after categorizing as income)
+  const [incomeBanner, setIncomeBanner] = useState<{
+    categoryName: string
+    contributions?: { goalName: string; percentage: number }[]
+  } | null>(null)
+
   // Merchant rule modal state (shown from action button)
   const [showRuleModal, setShowRuleModal] = useState(false)
   const [ruleFormPattern, setRuleFormPattern] = useState('')
@@ -475,6 +485,7 @@ export function TransactionDetailPanel({
     setEditingField(null)
     setEditValue('')
     setRuleBanner(null)
+    setIncomeBanner(null)
     setShowRuleModal(false)
   }, [selectedTransaction?.id])
 
@@ -482,6 +493,13 @@ export function TransactionDetailPanel({
   useEffect(() => {
     if (!ruleBanner) return
     const timer = setTimeout(() => setRuleBanner(null), 8000)
+    return () => clearTimeout(timer)
+  }, [ruleBanner])
+
+  // Auto-dismiss income banner after 10 seconds
+  useEffect(() => {
+    if (!incomeBanner) return
+    const timer = setTimeout(() => setIncomeBanner(null), 10000)
     return () => clearTimeout(timer)
   }, [ruleBanner])
 
@@ -612,11 +630,26 @@ export function TransactionDetailPanel({
           categoryId: category.id,
         })
       }
+
+      // Show income auto-contribution banner if categorized as income
+      const isIncome = incomeCategories.some(c => c.id === category.id)
+      if (isIncome && goalIncomeLinks) {
+        const matchingLinks = goalIncomeLinks.filter(l => l.category_id === category.id)
+        if (matchingLinks.length > 0) {
+          const contributions = matchingLinks.map(link => ({
+            goalName: goals.find(g => g.id === link.goal_id)?.name ?? 'Unknown Goal',
+            percentage: link.percentage,
+          }))
+          setIncomeBanner({ categoryName: category.name, contributions })
+        } else {
+          setIncomeBanner({ categoryName: category.name })
+        }
+      }
     } finally {
       setSaving(false)
     }
     setEditingField(null)
-  }, [selectedTransaction, saving, onFieldSave, onCreateMerchantRule, hasRuleForMerchant])
+  }, [selectedTransaction, saving, onFieldSave, onCreateMerchantRule, hasRuleForMerchant, incomeCategories, goalIncomeLinks, goals])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && editingField !== 'notes') {
@@ -784,6 +817,48 @@ export function TransactionDetailPanel({
                   </button>
                   <button
                     onClick={() => setRuleBanner(null)}
+                    className="px-3 py-1 text-xs font-medium text-[#1F1410]/50 hover:text-[#1F1410]/80 transition-colors"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Income Auto-Contribution Banner (after categorizing as income) */}
+            {incomeBanner && incomeBanner.contributions && (
+              <div className="ml-11 p-3 rounded-xl bg-[#10B981]/10 border border-[#10B981]/20">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <PiggyBank className="w-3.5 h-3.5 text-[#10B981]" />
+                  <p className="text-xs font-medium text-[#10B981]">Auto-contributed</p>
+                </div>
+                {incomeBanner.contributions.map(c => (
+                  <p key={c.goalName} className="text-sm text-[#1F1410]/80">
+                    {c.percentage}% &rarr; <span className="font-semibold">{c.goalName}</span>
+                  </p>
+                ))}
+                <button
+                  onClick={() => setIncomeBanner(null)}
+                  className="mt-1.5 text-xs text-[#1F1410]/40 hover:text-[#1F1410]/60 transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+            {incomeBanner && !incomeBanner.contributions && (
+              <div className="ml-11 p-3 rounded-xl bg-[#F59E0B]/10 border border-[#F59E0B]/20">
+                <p className="text-sm text-[#1F1410]/80">
+                  Contribute a percentage of <span className="font-semibold">{incomeBanner.categoryName}</span> income to a savings goal?
+                </p>
+                <div className="flex items-center gap-2 mt-2">
+                  <button
+                    onClick={() => { onNavigateToSavings?.(); setIncomeBanner(null) }}
+                    className="px-3 py-1 text-xs font-medium text-white bg-[#14B8A6] rounded-lg hover:bg-[#0D9488] transition-colors"
+                  >
+                    Set Up
+                  </button>
+                  <button
+                    onClick={() => setIncomeBanner(null)}
                     className="px-3 py-1 text-xs font-medium text-[#1F1410]/50 hover:text-[#1F1410]/80 transition-colors"
                   >
                     Dismiss
