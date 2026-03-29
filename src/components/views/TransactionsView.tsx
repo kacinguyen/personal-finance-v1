@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   LucideIcon,
+  X,
 } from 'lucide-react'
 import { TransactionItem } from '../common/TransactionItem'
 import type { UICategory } from '../../types/category'
@@ -1200,7 +1201,8 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
             )}
           </div>
 
-          {/* Right Column: Transaction Details Panel */}
+          {/* Right Column: Transaction Details Panel — desktop only */}
+          <div className="hidden lg:block">
           <TransactionDetailPanel
             selectedTransaction={selectedTransaction}
             duplicateMap={duplicateMap}
@@ -1228,8 +1230,57 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
             onResolveReimbursement={() => setIsResolveReimbursementModalOpen(true)}
             pendingReimbursement={selectedReimbursement}
           />
+          </div>
         </motion.div>
       </div>
+
+          {/* Mobile slide-up detail panel */}
+          {selectedTransaction && (
+            <div className="fixed inset-0 z-40 lg:hidden">
+              <div
+                className="absolute inset-0 bg-black/20"
+                onClick={() => setSelectedTransaction(null)}
+              />
+              <div className="absolute bottom-0 left-0 right-0 max-h-[85vh] overflow-y-auto bg-[#FFFBF5] rounded-t-2xl shadow-lg">
+                <div className="sticky top-0 bg-[#FFFBF5] px-4 pt-3 pb-2 flex justify-between items-center border-b border-[#1F1410]/5">
+                  <span className="text-xs font-semibold text-[#1F1410]/40 uppercase tracking-wide">Transaction Details</span>
+                  <button
+                    onClick={() => setSelectedTransaction(null)}
+                    className="p-1.5 rounded-lg hover:bg-[#1F1410]/5 transition-colors"
+                  >
+                    <X className="w-4 h-4 text-[#1F1410]/40" />
+                  </button>
+                </div>
+                <TransactionDetailPanel
+                  selectedTransaction={selectedTransaction}
+                  duplicateMap={duplicateMap}
+                  categories={expenseCategories}
+                  incomeCategories={incomeUiCategories}
+                  transferCategories={transferUiCategories}
+                  goals={goals}
+                  onEdit={handleEditSelectedTransaction}
+                  onDelete={handleDeleteSelectedTransaction}
+                  onMarkAsReviewed={handleMarkAsReviewed}
+                  onSplit={() => {
+                    if (selectedReimbursement) {
+                      setIsSplitWithOthersModalOpen(true)
+                    } else {
+                      setIsSplitModalOpen(true)
+                    }
+                  }}
+                  onReconcile={() => setIsReconcileModalOpen(true)}
+                  onFieldSave={handleFieldSave}
+                  onCreateMerchantRule={handleCreateMerchantRule}
+                  hasRuleForMerchant={hasRuleForMerchant}
+                  onNavigateToRules={() => onNavigate?.('profile')}
+                  goalIncomeLinks={goalIncomeLinks}
+                  onNavigateToSavings={() => onNavigate?.('savings')}
+                  onResolveReimbursement={() => setIsResolveReimbursementModalOpen(true)}
+                  pendingReimbursement={selectedReimbursement}
+                />
+              </div>
+            </div>
+          )}
 
       {/* Add/Edit Transaction Modal */}
       <AddTransactionModal
