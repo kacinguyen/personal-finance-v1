@@ -63,7 +63,7 @@ export function TransactionItem({
 
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-[#1F1410] truncate">{merchant}</p>
-        <div className="flex items-center gap-1.5 text-sm text-[#1F1410]/50">
+        <div className="flex items-center gap-1.5 text-sm text-[#1F1410]/50 flex-wrap">
           <span style={{ color }}>{category}</span>
           <span>•</span>
           <span>{date}</span>
@@ -74,8 +74,8 @@ export function TransactionItem({
           >
             {type}
           </span>
-          <span>•</span>
-          <div className="flex items-center gap-1">
+          <span className="hidden sm:inline">•</span>
+          <div className="hidden sm:flex items-center gap-1">
             <CreditCard className="w-3 h-3" />
             <span className="text-xs">{source}</span>
           </div>
