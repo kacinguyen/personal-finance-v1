@@ -48,9 +48,9 @@ export function BudgetSummaryCard({
       )}
 
       {/* Income + Needs/Wants/Savings on one line */}
-      <div className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-3">
+      <div className="grid grid-cols-3 sm:grid-cols-[2fr_1fr_1fr_1fr] gap-3">
         {/* Expected Income */}
-        <div className="flex flex-col justify-center">
+        <div className="col-span-3 sm:col-span-1 flex flex-col justify-center">
           <span className="text-xs uppercase tracking-widest text-[#1F1410]/30 mb-1">
             Expected Income
           </span>
