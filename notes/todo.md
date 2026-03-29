@@ -61,6 +61,10 @@ All planned work in one place. Grouped by priority tier based on user impact and
 - [ ] Monthly take-home trends chart (net pay vs. gross pay)
 - [ ] Tax withholding summary
 
+### Budgeting
+- [ ] Flex budgeting: allow budget categories to flex based on monthly variance (e.g., groceries can borrow from dining if under)
+- [ ] Trip/event budget suggestions: given a trip description (destination, duration, activities), suggest a budget breakdown with estimated amounts
+
 ### CSV Import Improvements
 - [ ] Preview modal before import (transaction count, date range)
 - [ ] Category mapping preview (merchant -> category)
