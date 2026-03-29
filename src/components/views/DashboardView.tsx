@@ -109,6 +109,7 @@ export function DashboardView() {
         .select('amount, date, category_id, goal_id')
         .gte('date', start.toISOString().split('T')[0])
         .lte('date', end.toISOString().split('T')[0])
+        .eq('needs_review', false)
 
       if (error) {
         console.error('Error fetching avg monthly spending:', error)
@@ -168,6 +169,7 @@ export function DashboardView() {
       .select('amount, category_id, merchant, goal_id')
       .gte('date', startOfMonth)
       .lte('date', endOfMonth)
+      .eq('needs_review', false)
 
     if (error) {
       console.error('Error fetching transactions:', error)
@@ -219,6 +221,7 @@ export function DashboardView() {
       .select('amount, date, category_id')
       .gte('date', startOfYear)
       .lte('date', endOfYear)
+      .eq('needs_review', false)
 
     if (txError) {
       console.error('Error fetching yearly transactions:', txError)
