@@ -30,10 +30,14 @@ When generating recommendation logic, adhere to this priority order:
 The overall goal is **approachable, warm, and minimal** — finance tracking should feel inviting, not clinical. Every design decision should favor clarity and scannability over decoration.
 
 ### Guiding Principles
-- **Numbers lead, chrome recedes.** The user came to see dollar amounts — borders, shadows, and labels should never compete with the data.
-- **Show real numbers, not abstract representations.** Prefer "$133 left" over a 72% progress bar. Actual dollar amounts are always more useful than percentages or bars alone.
-- **Reserve visual intensity for things that need attention.** Primary/saturated colors are for actionable items (CTAs, anomalies, needs-review badges) — not everyday list items.
-- **Warm and approachable > corporate and sterile.** The app should feel like a helpful friend, not a bank statement.
+
+**Numbers first, decoration second.** I come here to see dollar amounts. Borders, shadows, and labels exist to organize — never to compete with the data. If a decorative element draws the eye before the number does, remove it.
+
+**Show real amounts, not abstract representations.** A number I can act on is always more useful than a shape I have to interpret. "$160 left" beats a 60% progress bar — no mental math required. Early versions used horizontal bars per budget category, but I caught myself computing "60% of $400 is... $240 spent..." every time. Removing the bars and showing the dollar amount directly made the UI faster to scan and more useful.
+
+**Reserve visual intensity for things that need attention.** Saturated color is for actionable items — CTAs, anomalies, needs-review badges — not everyday list items. If everything is loud, nothing stands out. Early merchant avatars used bright filled circles with white initials. Every row competed for attention, so "needs review" badges disappeared into the noise. Switching to tinted circles — low-opacity category color background with colored text — made normal transactions visually quiet, so the things that actually need attention can do their job.
+
+**Warm and approachable over corporate and sterile.** Finance tracking should feel like a helpful friend, not a bank statement. Warm cream backgrounds, friendly empty-state copy, and generous whitespace over cold grays and dense tables.
 
 ### Surface Treatment
 - **Borders over shadows.** Use thin 1px borders at low opacity (`border-[#1F1410]/5`) for card edges. No `box-shadow` on content cards.
@@ -101,6 +105,14 @@ When the user wants to explore design direction or refine taste on a topic (UI s
 3. Collect the user's pick + reasoning for each round (4 rounds is a good target).
 4. Synthesize preferences into concise, opinionated guidelines and encode them into the relevant section of CLAUDE.md.
 5. Delete the temporary tab when done.
+
+## Development Practices
+- **Work incrementally.** Make one change at a time. Verify it works before moving on to the next. Don't stack multiple untested changes — if something breaks, it's harder to find which change caused it.
+- **Check your work.** After making a change, run the dev server, tests, or linter as appropriate to confirm it behaves as expected. Don't assume it works because it looks right.
+- **Read before you edit.** Understand the existing code before modifying it. Check how a function is used, what props a component expects, and what the data shape looks like.
+- **Keep changes minimal and focused.** Only change what's needed for the task at hand. Unrelated cleanups, refactors, or "improvements" introduce risk and make review harder.
+- **Test at the boundaries.** Verify edge cases — empty states, null values, zero amounts, negative numbers. Financial data is messy; don't assume clean inputs.
+- **Don't swallow errors silently.** If something can fail, handle it visibly. A blank screen with no error message is worse than an ugly error.
 
 ## Security Guidelines
 - **PII:** Never log PII (Personally Identifiable Information).
