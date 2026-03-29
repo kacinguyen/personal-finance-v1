@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "Check `git diff` for any files changed in this session. For each changed file, review the modifications for: (1) code that duplicates existing utilities or functions in the codebase, (2) obvious quality issues like missing error handling at system boundaries, unused imports, or dead code, (3) inefficient patterns that have simpler alternatives. Only report actionable findings — skip nitpicks and style preferences. If nothing meaningful is found, say so briefly.",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}
