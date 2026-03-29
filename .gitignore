@@ -28,5 +28,6 @@ npm-debug.log*
 .vercel
 
 # Personal notes & screenshots
-notes/
+notes/CASE_STUDY.md
+notes/PORTFOLIO.md
 screenshots/

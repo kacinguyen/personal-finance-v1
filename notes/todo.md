@@ -1,136 +1,92 @@
-# Finance App Build Roadmap
+# Finance App — Prioritized Backlog
 
-## Phase 1: Database Schemas
-- [x] **Configure Magic Patterns MCP**: Scaffold React + Tailwind structure
-- [x] Create `transactions` table (date, amount, merchant, category_id)
-- [x] Create `paystubs` table (net_pay, gross_pay, 401k_contrib, espp_contrib, rsu_vest, pay_date)
-- [ ] Create `accounts` table (balance starts at 0 until user configures)
-    - account_type: 'checking', 'savings', 'hysa', '401k', 'brokerage', 'espp'
-    - institution_name, account_name
-    - current_balance, available_balance (default 0)
-    - plaid_account_id (for future Plaid linking)
-- [x] Create `budgets` table (monthly_limit, budget_type: need/want, flexibility: fixed/variable, icon, color)
-- [x] Connect BudgetView to database (fetch, update, create categories)
-- [X] Create `goals` table (target_amount, current_amount, deadline)
+All planned work in one place. Grouped by priority tier based on user impact and dependency order.
 
-## Phase 2: Sample Data & Page Scaffolding
-- [x] Build CSV file upload for Bank transactions
-- [x] Map transaction data schema to components
-- [ ] Insert sample transactions (mixed categories)
-- [ ] Insert sample paystub data
-- [x] Insert default categories (via budgets table migration)
-- [ ] Wire up each page to display its own data
+---
 
-## Phase 3: Income Page
-- [x] Display paystub list with earnings breakdown (shows paychecks by date)
-- [x] Fetch expected income from paystubs table
-- [ ] Monthly take-home trends chart (Net Pay vs Gross Pay)
-- [x] **Paystub PDF Import**:
-    - [x] Integrate parser (PDF.js) to read paystub PDFs
-    - [x] Extract "Net Pay" for Income Dashboard
-    - [x] Extract "Deductions" (401k, ESPP, Taxes) for Savings Dashboard
-    - [x] Build confirmation modal showing extracted fields for user review
-    - [x] Build PDF preview to cross-compare fields with uploaded document
-    - [x] Save paystub data to database on confirm
+## What's Done
 
-## Phase 4: Budget & Expenses Page
-- [x] **Category Manager UI**:
-    - [x] Create/edit categories with monthly limits
-    - [x] Category icons and color picker
-    - [x] Needs vs Wants separation with visual breakdown
-- [ ] **CSV Import Verification**:
-    - [ ] Build CSV preview modal before import
-    - [ ] Show transaction count and date range summary
-    - [ ] Display category mapping preview (merchant → category)
-    - [ ] Allow bulk category assignment for unmapped merchants
-    - [ ] Highlight unrecognized/new categories
-    - [ ] Option to create new categories during import
-    - [ ] Show duplicate detection (transactions already imported)
-    - [ ] Confirm/cancel import after review
-- [ ] **Transaction-to-Category Mapping**:
-    - [ ] Build mapping engine for merchants to categories
-    - [ ] Create "Rules" UI (e.g., "Always map 'Uber' to 'Transport'")
-    - [ ] Save merchant-to-category mappings for future imports
-    - [ ] Auto-apply saved mappings during CSV preview
-- [x] **Expense Dashboard**:
-    - [x] Aggregate transactions by category for current month
-    - [x] Budget progress bars per category (e.g., $400 / $500 spent)
-    - [x] Fetch budget limits from database
-    - [x] Sync expected income from paystubs
-- [ ] Over-budget alerts for exceeded limits
+- Database schemas (transactions, paystubs, budgets, goals, accounts, categories, monthly summaries)
+- CSV import (basic file upload + parsing)
+- Paystub PDF import (parser, preview, confirmation modal)
+- Category manager UI (create/edit, icons, colors, needs/wants)
+- Expense dashboard (aggregates, budget progress, income sync)
+- Auth (sign-in/sign-up, RLS, AuthContext, ProtectedRoute)
+- AI agent server (Fastify, 13 read-only tools, streaming chat, system prompt)
+- AI chat frontend (ChatPanel, ChatButton, ChatMessage, ChatInput, inline tab)
+- Data foundations (backfill category_id, merchant rules + aliases, auto-clear needs_review, Plaid sync resolution)
+- Chat history persistence (database-backed)
+- Proactive AI insights (generate-insights, get-top-merchants, compare-months)
+- Dashboard (live metrics, top categories, yearly chart, spending projections)
+- Goal edit/delete
+- Plaid transaction sync (live, with category resolution + merchant rules)
 
-## Phase 5: Savings Page
-- [ ] Display account balances from `accounts` table
-- [ ] Track progress toward each goal
-- [ ] **Goal Management**:
-    - [ ] Edit active goals (name, target amount, deadline, icon, color)
-    - [ ] Delete/archive completed or cancelled goals
-    - [ ] Pause/resume goal contributions
-    - [ ] Reorder goals by priority
-    - [ ] Add manual contributions to goals
+---
 
-## Phase 6: Cross-Page Data Flow
-- [x] Sync expected income across Income, Budget, and Expenses pages (from paystubs)
+## P0 — High Impact, Near-Term
+
+### Smart Categorization
+- [ ] Capture additional Plaid metadata: `personal_finance_category.detailed`, `confidence_level`, `location`, `counterparty`, `merchant_entity_id`
+- [ ] AI write tools: `categorize-transaction` and `update-transaction` in agent server
+- [ ] Auto-categorize button in TransactionsView (batch process `needs_review` transactions)
+- [ ] Learn from user corrections: auto-create merchant rules when user re-categorizes
+- [ ] Merchant-to-category rules UI (view, edit, delete rules)
+
+### Waterfall Recommendations
+- [ ] Surface waterfall engine as first-class feature (not just chat tool)
+- [ ] Calculate "Unallocated Cash" (income - expenses - contributions)
 - [ ] Auto-log 401k/ESPP contributions from paystubs to savings progress
-- [ ] Calculate "Unallocated Cash" (Income - Expenses)
-- [ ] Recommend goal allocations based on "waterfall" rules:
-    1. Safety Net (3 months expenses in HYSA)
-    2. Maximize Employer 401k Match
-    3. High-interest debt (>7%) repayment
-    4. ESPP if discount >10% with immediate sell
-    5. RSU diversification (sell-to-cover)
 
-## Phase 7: Authentication & User Management
-- [x] Add user_id columns and RLS policies to all tables
-- [x] Create AuthContext and useUser hook
-- [x] Build sign-in/sign-up UI (AuthView)
-- [x] Add ProtectedRoute wrapper
-- [x] Update all data operations to include user_id
-- [ ] **Email Verification**:
-    - [ ] Enable email confirmation in Supabase Dashboard
-    - [ ] Create email verification pending screen
-    - [ ] Handle "Email not confirmed" error state gracefully
-    - [ ] Add "Resend verification email" button
-    - [ ] Redirect to app after email confirmation
-- [ ] **Password Management**:
-    - [ ] Add "Forgot password" flow
-    - [ ] Create password reset email template
-    - [ ] Build password reset form
-- [ ] **Session Management**:
-    - [ ] Handle session expiration gracefully
-    - [ ] Add "Remember me" option
-    - [ ] Implement secure logout (clear all session data)
+### Goal Management
+- [ ] Pause/resume goal contributions
+- [ ] Manual contributions to goals
+- [ ] Reorder goals by priority
 
-## Phase 8: Insights & Dashboard
-- [x] Connect dashboard metrics to live data (total spent, expected income, days left)
-- [ ] **Budget Status Card**:
-    - [ ] Calculate actual budget status from transactions vs budgets
-    - [ ] Show spending pace indicator (ahead/behind expected)
-    - [ ] Add trend arrow comparing to previous month
-- [ ] **Monthly Overview Grid**:
-    - [ ] Populate monthly cards with actual spending data per month
-    - [ ] Color-code months by budget status (under/over/on-track)
-    - [ ] Show year-to-date totals
-- [ ] **Quick Stats Cards**:
-    - [ ] Daily average spending (actual calculation)
-    - [ ] Projected month-end total based on spending pace
-    - [ ] Savings rate (income - expenses / income)
-- [ ] **Spending Insights**:
-    - [ ] Top spending categories this month
-    - [ ] Biggest transactions this month
-    - [ ] Category spending vs last month comparison
-    - [ ] Unusual spending alerts (e.g., "Dining 40% higher than usual")
-- [ ] **Income Insights**:
-    - [ ] Income trends over time
-    - [ ] Paycheck-to-paycheck breakdown
-    - [ ] Tax withholding summary
-- [ ] **Goal Progress Cards**:
-    - [ ] Show active savings goals on dashboard
-    - [ ] Progress bars with projected completion dates
-    - [ ] Contribution suggestions based on remaining budget
+---
 
-## Phase 9: Live Automation (Plaid)
-- [ ] Link bank accounts via Plaid Transactions API
-- [ ] Sync investment account balances (401k/Brokerage)
-- [ ] Replace CSV import with live transaction sync
-- [ ] Update "Net Worth" with real-time data
+## P1 — Important, Medium-Term
+
+### Dashboard Enhancements
+- [ ] Budget status card with spending pace indicator (ahead/behind) + trend arrow vs. previous month
+- [ ] Monthly overview grid: color-coded months by budget status, year-to-date totals
+- [ ] Quick stats: daily average spending, projected month-end, savings rate
+- [ ] Goal progress cards with projected completion dates + contribution suggestions
+
+### Spending & Income Insights
+- [ ] Over-budget alerts for exceeded category limits
+- [ ] Unusual spending alerts (e.g., "Dining 40% higher than usual")
+- [ ] Top spending categories + biggest transactions this month
+- [ ] Category spending vs. last month comparison
+- [ ] Income trends over time + paycheck breakdown
+- [ ] Monthly take-home trends chart (net pay vs. gross pay)
+- [ ] Tax withholding summary
+
+### CSV Import Improvements
+- [ ] Preview modal before import (transaction count, date range)
+- [ ] Category mapping preview (merchant -> category)
+- [ ] Bulk category assignment for unmapped merchants
+- [ ] Duplicate detection (transactions already imported)
+
+---
+
+## P2 — Nice-to-Have, Longer-Term
+
+### AI Agent Polish
+- [ ] Rate limiting (`@fastify/rate-limit`)
+- [ ] Request logging
+- [ ] Error handling middleware
+
+### Advanced Categorization (AI/ML)
+- [ ] LLM-based categorization for unresolved transactions (batch or inline)
+- [ ] Web search for cryptic merchant names ("SQ *BLUE BOTTLE COF" -> "Blue Bottle Coffee")
+- [ ] Location-based intelligence (travel vs. home spending, geographic clustering)
+- [ ] Agent-based enrichment pipeline (rules -> Plaid detailed -> web search -> LLM -> auto-assign or suggest)
+
+### Auth Hardening
+- [ ] Email verification flow (confirmation screen, resend button, redirect)
+- [ ] Forgot password / password reset flow
+- [ ] Session management (expiration handling, remember me, secure logout)
+
+### Live Automation (Plaid)
+- [ ] Sync investment account balances (401k/brokerage)
+- [ ] Update net worth with real-time data
