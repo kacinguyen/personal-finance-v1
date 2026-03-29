@@ -113,6 +113,7 @@ export function BudgetSummaryCard({
           </div>
         </div>
       </div>
+
     </motion.div>
   )
 }
