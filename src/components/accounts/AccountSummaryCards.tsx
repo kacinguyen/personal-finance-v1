@@ -24,9 +24,9 @@ export function AccountSummaryCards({
       transition={{ delay: 0.1 }}
       className="bg-white rounded-2xl p-6 mb-8 border border-[#1F1410]/5"
     >
-      <div className="grid grid-cols-[2fr_1fr_1fr] gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-[2fr_1fr_1fr] gap-3">
         {/* Net Worth */}
-        <div className="flex flex-col justify-center">
+        <div className="col-span-2 sm:col-span-1 flex flex-col justify-center">
           <span className="text-xs uppercase tracking-widest text-[#1F1410]/30 mb-1">
             Net Worth
           </span>
