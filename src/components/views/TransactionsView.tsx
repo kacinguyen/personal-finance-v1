@@ -232,7 +232,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
       id: tx.id,
       icon,
       merchant: tx.merchant,
-      category: tx.category || 'Uncategorized',
+      category: category?.name || tx.category || 'Uncategorized',
       category_id: tx.category_id || category?.id || null,
       date: formatDisplayDate(tx.date),
       rawDate: tx.date,
