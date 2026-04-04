@@ -26,11 +26,20 @@ All planned work in one place. Grouped by priority tier based on user impact and
 ## P0 — High Impact, Near-Term
 
 ### Smart Categorization
-- [ ] Capture additional Plaid metadata: `personal_finance_category.detailed`, `confidence_level`, `location`, `counterparty`, `merchant_entity_id`
+- [x] Capture additional Plaid metadata: `personal_finance_category.detailed`, `confidence_level`, `location`, `counterparty`, `merchant_entity_id`
+- [x] Auto-create merchant rules from VERY_HIGH/HIGH confidence counterparties (use `plaid_merchant_entity_id` + `plaid_counterparty_confidence`)
+- [ ] AI-based categorization fallback for LOW/MEDIUM confidence transactions (use detailed category + location as context)
 - [ ] AI write tools: `categorize-transaction` and `update-transaction` in agent server
 - [ ] Auto-categorize button in TransactionsView (batch process `needs_review` transactions)
 - [ ] Learn from user corrections: auto-create merchant rules when user re-categorizes
 - [ ] Merchant-to-category rules UI (view, edit, delete rules)
+
+### Agentic Categorization Pipeline
+- [ ] Auto-categorize on sync: run tiered resolution inline (merchant rules → high-confidence counterparty → AI fallback) so transactions only hit `needs_review` when all tiers fail
+- [ ] Scheduled background sync: cron job (e.g., every 6 hours via pg_cron or Supabase cron) to sync all active Plaid items without user interaction
+- [ ] Plaid webhook endpoint (`SYNC_UPDATES_AVAILABLE`) to replace polling with near-real-time transaction ingestion
+- [ ] Anomaly detection post-sync: flag unusual amounts for a merchant or new high-spend merchants with `is_anomaly` marker (separate from `needs_review`)
+- [ ] Batched monthly summary refresh: debounce `refresh_monthly_summary` during bulk AI categorization to avoid N individual trigger fires
 
 ### Waterfall Recommendations
 - [ ] Surface waterfall engine as first-class feature (not just chat tool)

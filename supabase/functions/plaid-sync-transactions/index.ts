@@ -40,6 +40,13 @@ serve(async (req) => {
       categoryMap.set(cat.normalized_name, cat.id)
     }
 
+    // Build a set of existing rule patterns (lowercased) to avoid duplicate auto-creation
+    const existingRulePatterns = new Set(
+      (merchantRules || []).map(r => r.pattern.toLowerCase().trim())
+    )
+    // Collect new rules to batch-insert after sync
+    const newRules: { user_id: string; pattern: string; match_type: string; category_id: string; priority: number }[] = []
+
     let cursor = item.transaction_sync_cursor || undefined
     let added = 0
     let modified = 0
@@ -63,15 +70,16 @@ serve(async (req) => {
       // Process added transactions
       for (const tx of syncData.added) {
         const mapped = mapTransaction(tx, userId, item.institution_name)
-        const resolvedCategoryId = resolveCategoryId(
+        const resolution = resolveCategoryId(
           mapped.merchant,
           mapped.category,
           categoryMap,
           merchantRules || [],
         )
-        if (resolvedCategoryId) {
-          mapped.category_id = resolvedCategoryId
+        if (resolution) {
+          mapped.category_id = resolution.categoryId
           mapped.needs_review = false
+          maybeCreateRule(mapped, resolution, userId, existingRulePatterns, newRules)
         }
         const { error } = await supabase
           .from('transactions')
@@ -90,15 +98,16 @@ serve(async (req) => {
           .maybeSingle()
 
         const mapped = mapTransaction(tx, userId, item.institution_name)
-        const resolvedCategoryId = resolveCategoryId(
+        const resolution = resolveCategoryId(
           mapped.merchant,
           mapped.category,
           categoryMap,
           merchantRules || [],
         )
-        if (resolvedCategoryId) {
-          mapped.category_id = resolvedCategoryId
+        if (resolution) {
+          mapped.category_id = resolution.categoryId
           mapped.needs_review = false
+          maybeCreateRule(mapped, resolution, userId, existingRulePatterns, newRules)
         }
 
         // If amount was modified by a shared split, preserve the user's share
@@ -132,6 +141,16 @@ serve(async (req) => {
       hasMore = syncData.has_more
     }
 
+    // Batch-insert auto-created merchant rules from high-confidence counterparties
+    let rulesCreated = 0
+    if (newRules.length > 0) {
+      const { data } = await supabase
+        .from('merchant_category_rules')
+        .insert(newRules)
+        .select('id')
+      rulesCreated = data?.length ?? 0
+    }
+
     // Save updated cursor
     await supabase
       .from('plaid_items')
@@ -140,7 +159,7 @@ serve(async (req) => {
       .eq('user_id', userId)
 
     return new Response(
-      JSON.stringify({ added, modified, removed }),
+      JSON.stringify({ added, modified, removed, rulesCreated }),
       { headers: { ...cors, 'Content-Type': 'application/json' } },
     )
   } catch (err) {
@@ -154,6 +173,16 @@ serve(async (req) => {
 
 // --- Types & Helpers ---
 
+type PlaidCounterparty = {
+  name?: string | null
+  type?: string | null
+  website?: string | null
+  logo_url?: string | null
+  confidence_level?: string | null
+  entity_id?: string | null
+  phone_number?: string | null
+}
+
 type PlaidTransaction = {
   transaction_id: string
   account_id: string
@@ -161,11 +190,14 @@ type PlaidTransaction = {
   merchant_name?: string | null
   name: string
   amount: number
-  personal_finance_category?: { primary: string } | null
+  personal_finance_category?: { primary: string; detailed?: string } | null
   category?: string[] | null
   category_id?: string | null
   pending: boolean
   payment_channel?: string
+  counterparties?: PlaidCounterparty[] | null
+  merchant_entity_id?: string | null
+  location?: Record<string, unknown> | null
 }
 
 /**
@@ -178,6 +210,11 @@ function mapTransaction(
   userId: string,
   sourceName: string | null,
 ) {
+  // Extract primary counterparty (merchant type preferred)
+  const counterparty = tx.counterparties?.find((c) => c.type === 'merchant')
+    || tx.counterparties?.[0]
+    || null
+
   return {
     user_id: userId,
     date: tx.date,
@@ -196,7 +233,53 @@ function mapTransaction(
     source: 'plaid',
     source_name: sourceName || null,
     needs_review: true,
+    plaid_counterparty: tx.counterparties || null,
+    plaid_counterparty_confidence: counterparty?.confidence_level || null,
+    plaid_merchant_entity_id: tx.merchant_entity_id || counterparty?.entity_id || null,
+    plaid_detailed_category: tx.personal_finance_category?.detailed || null,
+    plaid_location: tx.location || null,
   }
+}
+
+const HIGH_CONFIDENCE_LEVELS = new Set(['VERY_HIGH', 'HIGH'])
+
+/**
+ * If a transaction was resolved via category-text fallback (not an existing rule)
+ * and has a high-confidence Plaid counterparty, queue a new merchant rule so
+ * future syncs match via the faster rule path.
+ */
+function maybeCreateRule(
+  mapped: ReturnType<typeof mapTransaction>,
+  resolution: NonNullable<CategoryResolution>,
+  userId: string,
+  existingPatterns: Set<string>,
+  newRules: { user_id: string; pattern: string; match_type: string; category_id: string; priority: number }[],
+) {
+  // Only auto-create when resolved via text fallback (rule already covers it otherwise)
+  if (resolution.source !== 'text') return
+
+  const confidence = mapped.plaid_counterparty_confidence
+  if (!confidence || !HIGH_CONFIDENCE_LEVELS.has(confidence)) return
+
+  // Use the counterparty name if available, otherwise fall back to merchant
+  const counterparty = (mapped.plaid_counterparty as PlaidCounterparty[] | null)
+    ?.find((c) => c.type === 'merchant')
+    || (mapped.plaid_counterparty as PlaidCounterparty[] | null)?.[0]
+  const pattern = counterparty?.name || mapped.merchant
+  if (!pattern) return
+
+  const lowerPattern = pattern.toLowerCase().trim()
+  if (existingPatterns.has(lowerPattern)) return
+
+  // Mark as seen so we don't queue duplicates within the same sync batch
+  existingPatterns.add(lowerPattern)
+  newRules.push({
+    user_id: userId,
+    pattern,
+    match_type: 'exact',
+    category_id: resolution.categoryId,
+    priority: 10,
+  })
 }
 
 type MerchantRule = {
@@ -205,16 +288,22 @@ type MerchantRule = {
   category_id: string
 }
 
+type CategoryResolution = {
+  categoryId: string
+  source: 'rule' | 'text'
+} | null
+
 /**
  * Resolve category_id for a transaction using merchant rules (higher priority)
  * and then falling back to category text matching.
+ * Returns the source so callers know whether a rule already covers this merchant.
  */
 function resolveCategoryId(
   merchant: string | null,
   categoryText: string | null,
   categoryMap: Map<string, string>,
   merchantRules: MerchantRule[],
-): string | null {
+): CategoryResolution {
   // 1. Try merchant rules first (already sorted by priority DESC)
   if (merchant) {
     const lowerMerchant = merchant.toLowerCase().trim()
@@ -228,7 +317,7 @@ function resolveCategoryId(
       } else if (rule.match_type === 'contains') {
         matched = lowerMerchant.includes(pattern)
       }
-      if (matched) return rule.category_id
+      if (matched) return { categoryId: rule.category_id, source: 'rule' }
     }
   }
 
@@ -236,7 +325,7 @@ function resolveCategoryId(
   if (categoryText) {
     const normalized = categoryText.toLowerCase().trim()
     const id = categoryMap.get(normalized)
-    if (id) return id
+    if (id) return { categoryId: id, source: 'text' }
   }
 
   return null
