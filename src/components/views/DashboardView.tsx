@@ -39,8 +39,6 @@ type YearlyChartData = {
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 export function DashboardView() {
-  const [totalSpent, setTotalSpent] = useState(0)
-  const [totalBudget, setTotalBudget] = useState(0)
   const [yearlyChartData, setYearlyChartData] = useState<YearlyChartData[]>([])
   const [chartYear, setChartYear] = useState(() => new Date().getFullYear())
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -51,7 +49,10 @@ export function DashboardView() {
   // Use shared hook for expected income
   const { expectedIncome, loading: incomeLoading } = useExpectedIncome(selectedMonth)
   const { categories: dbCategories, findCategoryById } = useCategories()
-  const { categorySummaries } = useMonthlySummary(selectedMonth)
+  const { summary, categorySummaries } = useMonthlySummary(selectedMonth)
+
+  const totalSpent = summary?.total_spending ?? 0
+  const totalBudget = summary?.total_budget ?? 0
 
   // Average monthly spending (trailing 6 months)
   const [avgMonthlySpending, setAvgMonthlySpending] = useState<number | null>(null)
@@ -160,8 +161,8 @@ export function DashboardView() {
     return { avgPerDay, projected }
   }, [totalSpent, monthData.daysElapsed, monthData.daysInMonth])
 
-  // Fetch total spent from transactions for selected month (expenses only)
-  const fetchTotalSpent = useCallback(async () => {
+  // Fetch largest outflow transaction for selected month
+  const fetchLargestOutflow = useCallback(async () => {
     const { startOfMonth, endOfMonth } = getMonthRange(selectedMonth)
 
     const { data, error } = await supabase
@@ -177,10 +178,7 @@ export function DashboardView() {
       const expenses = data.filter(t =>
         (!t.category_id || !excludedCategoryIds.has(t.category_id)) && !t.goal_id
       )
-      const total = expenses.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
-      setTotalSpent(total)
 
-      // Find largest outflow
       if (expenses.length > 0) {
         const largest = expenses.reduce((max, t) =>
           Math.abs(Number(t.amount)) > Math.abs(Number(max.amount)) ? t : max
@@ -191,21 +189,6 @@ export function DashboardView() {
       }
     }
   }, [selectedMonth, excludedCategoryIds])
-
-  // Fetch total budget from budgets
-  const fetchTotalBudget = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('budgets')
-      .select('monthly_limit')
-      .eq('is_active', true)
-
-    if (error) {
-      console.error('Error fetching budgets:', error)
-    } else if (data) {
-      const total = data.reduce((sum, b) => sum + Number(b.monthly_limit), 0)
-      setTotalBudget(total)
-    }
-  }, [])
 
   // Fetch yearly data for chart
   const fetchYearlyData = useCallback(async () => {
@@ -272,9 +255,8 @@ export function DashboardView() {
 
   // Fetch data when selected month changes
   useEffect(() => {
-    fetchTotalSpent()
-    fetchTotalBudget()
-  }, [fetchTotalSpent, fetchTotalBudget, selectedMonth])
+    fetchLargestOutflow()
+  }, [fetchLargestOutflow, selectedMonth])
 
   // Fetch chart data when chart year changes
   useEffect(() => {

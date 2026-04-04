@@ -22,6 +22,7 @@ import { SpendingVelocityChart } from '../charts/SpendingVelocityChart'
 import { MonthPicker } from '../common/MonthPicker'
 import { getMonthRange, getMonthData } from '../../lib/dateUtils'
 import { useExpectedIncome } from '../../hooks/useExpectedIncome'
+import { useMonthlySummary } from '../../hooks/useMonthlySummary'
 import type { Transaction as DBTransaction } from '../../types/transaction'
 import { useUser } from '../../hooks/useUser'
 import { AddTransactionModal, TransactionFormData } from '../modals/AddTransactionModal'
@@ -77,6 +78,7 @@ export function TransactionFeed() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [editingTransaction, setEditingTransaction] = useState<TransactionFormData | null>(null)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const { summary } = useMonthlySummary(selectedMonth)
 
   // Category lists for the edit modal
   const incomeUiCategories = useMemo<UICategory[]>(() => {
@@ -441,10 +443,7 @@ export function TransactionFeed() {
     setTransactions(prev => prev.filter(t => t.id !== transactionId))
   }, [])
 
-  const totalSpent = useMemo(
-    () => transactions.reduce((sum, t) => sum + t.amount, 0),
-    [transactions]
-  )
+  const totalSpent = summary?.total_spending ?? 0
 
   const budgetTracking = useMemo(() => {
     const totalBudget = categoriesWithTotals.reduce((sum, cat) => sum + cat.budget, 0)
