@@ -66,15 +66,16 @@ function formatDisplayDate(dateStr: string): string {
   }
 }
 
-export function TransactionFeed() {
+type TransactionFeedProps = {
+  selectedMonth: Date
+  onMonthChange: (month: Date) => void
+}
+
+export function TransactionFeed({ selectedMonth, onMonthChange }: TransactionFeedProps) {
   const { userId } = useUser()
   const { categories: dbCategories, findCategoryByName, refetch: refetchCategories } = useCategories()
   const [transactions, setTransactions] = useState<UITransaction[]>([])
   const [budgets, setBudgets] = useState<Record<string, number>>({})
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), 1)
-  })
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [editingTransaction, setEditingTransaction] = useState<TransactionFormData | null>(null)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -574,7 +575,7 @@ export function TransactionFeed() {
         >
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-2xl font-bold text-[#1F1410]">Your Spending</h1>
-            <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
+            <MonthPicker selectedMonth={selectedMonth} onMonthChange={onMonthChange} />
           </div>
         </motion.div>
 

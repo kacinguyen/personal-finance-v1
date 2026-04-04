@@ -52,14 +52,13 @@ export type PaystubRecord = {
 }
 
 
-export function IncomeView() {
-  const fileInputRef = useRef<HTMLInputElement>(null)
+type IncomeViewProps = {
+  selectedMonth: Date
+  onMonthChange: (month: Date) => void
+}
 
-  // Month selection state
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), 1)
-  })
+export function IncomeView({ selectedMonth, onMonthChange }: IncomeViewProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // PDF import state
   const [isProcessingPDF, setIsProcessingPDF] = useState(false)
@@ -423,7 +422,7 @@ export function IncomeView() {
         >
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-2xl font-bold text-[#1F1410]">Income</h1>
-            <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
+            <MonthPicker selectedMonth={selectedMonth} onMonthChange={onMonthChange} />
           </div>
         </motion.div>
 

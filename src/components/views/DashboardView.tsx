@@ -38,13 +38,14 @@ type YearlyChartData = {
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-export function DashboardView() {
+type DashboardViewProps = {
+  selectedMonth: Date
+  onMonthChange: (month: Date) => void
+}
+
+export function DashboardView({ selectedMonth, onMonthChange }: DashboardViewProps) {
   const [yearlyChartData, setYearlyChartData] = useState<YearlyChartData[]>([])
   const [chartYear, setChartYear] = useState(() => new Date().getFullYear())
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), 1)
-  })
 
   // Use shared hook for expected income
   const { expectedIncome, loading: incomeLoading } = useExpectedIncome(selectedMonth)
@@ -312,7 +313,7 @@ export function DashboardView() {
         >
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-2xl font-bold text-[#1F1410]">Dashboard</h1>
-            <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
+            <MonthPicker selectedMonth={selectedMonth} onMonthChange={onMonthChange} />
           </div>
         </motion.div>
 

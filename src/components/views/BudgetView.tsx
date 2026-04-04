@@ -103,17 +103,17 @@ const DEFAULT_BUDGET_AMOUNTS: Record<string, number> = {
   'Other': 100,
 }
 
-export function BudgetView() {
+type BudgetViewProps = {
+  selectedMonth: Date
+  onMonthChange: (month: Date) => void
+}
+
+export function BudgetView({ selectedMonth, onMonthChange }: BudgetViewProps) {
   const { userId } = useUser()
   const { createCategory: createDbCategory, updateCategory: updateDbCategory, updateCategoryOrder, deleteCategory: deleteDbCategory, seedDefaultCategories, needCategories, wantCategories, incomeCategories, transferCategories, loading: categoriesLoading } = useCategories()
   const [budgets, setBudgets] = useState<CategoryBudget[]>([])
   const [loading, setLoading] = useState(true)
   const [seeding, setSeeding] = useState(false)
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), 1)
-  })
-
   const { expectedIncome } = useExpectedIncome(selectedMonth)
 
 
@@ -586,7 +586,7 @@ export function BudgetView() {
         >
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-2xl font-bold text-[#1F1410]">Budget</h1>
-            <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
+            <MonthPicker selectedMonth={selectedMonth} onMonthChange={onMonthChange} />
           </div>
         </motion.div>
 

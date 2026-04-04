@@ -20,22 +20,26 @@ type Tab = 'dashboard' | 'transactions' | 'income' | 'expenses' | 'savings' | 'b
 export function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), 1)
+  })
   const isDesktop = useMediaQuery('(min-width: 1024px)')
 
   const renderView = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardView />
+        return <DashboardView selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
       case 'transactions':
-        return <TransactionsView onNavigate={(tab) => setActiveTab(tab as Tab)} />
+        return <TransactionsView selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} onNavigate={(tab) => setActiveTab(tab as Tab)} />
       case 'income':
-        return <IncomeView />
+        return <IncomeView selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
       case 'expenses':
-        return <TransactionFeed />
+        return <TransactionFeed selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
       case 'savings':
         return <SavingsView />
       case 'budget':
-        return <BudgetView />
+        return <BudgetView selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
       case 'accounts':
         return <AccountsView />
       case 'chat':
@@ -43,7 +47,7 @@ export function App() {
       case 'profile':
         return <ProfileView />
       default:
-        return <DashboardView />
+        return <DashboardView selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
     }
   }
 

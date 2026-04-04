@@ -100,7 +100,13 @@ export function formatDisplayDate(dateStr: string): string {
   }
 }
 
-export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) => void }) {
+type TransactionsViewProps = {
+  selectedMonth: Date
+  onMonthChange: (month: Date) => void
+  onNavigate?: (tab: string) => void
+}
+
+export function TransactionsView({ selectedMonth, onMonthChange, onNavigate }: TransactionsViewProps) {
   const [showAll, setShowAll] = useState(false)
   const ITEMS_PER_PAGE = 25
 
@@ -112,10 +118,6 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
   const [rawTransactions, setRawTransactions] = useState<DBTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), 1)
-  })
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<TransactionFormData | null>(null)
   const [selectedTransaction, setSelectedTransaction] = useState<UITransaction | null>(null)
@@ -1030,7 +1032,7 @@ export function TransactionsView({ onNavigate }: { onNavigate?: (tab: string) =>
         >
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-2xl font-bold text-[#1F1410]">Transactions</h1>
-            <MonthPicker selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
+            <MonthPicker selectedMonth={selectedMonth} onMonthChange={onMonthChange} />
           </div>
         </motion.div>
 
