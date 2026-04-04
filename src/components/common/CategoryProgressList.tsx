@@ -49,7 +49,7 @@ function CategoryGroup({ parent, children, defaultExpanded = true, selectedCateg
 
   const groupTotal = useMemo(() =>
     hasActiveChildren
-      ? activeChildren.reduce((sum, cat) => sum + cat.total, 0)
+      ? activeChildren.reduce((sum, cat) => sum + cat.total, 0) + parent.total
       : parent.total,
     [hasActiveChildren, activeChildren, parent.total]
   )

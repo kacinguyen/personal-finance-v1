@@ -327,12 +327,15 @@ export function TransactionFeed() {
     const totals: Record<string, number> = {}
     transactions.forEach((t) => {
       if (t.goal_id) return // Goal-funded transactions don't count toward budget
-      totals[t.category] = (totals[t.category] || 0) + t.amount
+      const key = t.category_id || t.category
+      if (key) {
+        totals[key] = (totals[key] || 0) + t.amount
+      }
     })
 
     return uiCategories.map((cat) => ({
       ...cat,
-      total: Math.round((totals[cat.name] || 0) * 100) / 100,
+      total: Math.round((totals[cat.id] || totals[cat.name] || 0) * 100) / 100,
       // Look up budget by category ID first, then by name
       budget: budgets[cat.id] || budgets[cat.name] || 0,
     }))
