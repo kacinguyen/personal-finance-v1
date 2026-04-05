@@ -114,6 +114,17 @@ When the user wants to explore design direction or refine taste on a topic (UI s
 - **Test at the boundaries.** Verify edge cases — empty states, null values, zero amounts, negative numbers. Financial data is messy; don't assume clean inputs.
 - **Don't swallow errors silently.** If something can fail, handle it visibly. A blank screen with no error message is worse than an ugly error.
 
+## Database Migrations
+- **Location:** `supabase/migrations/` — named with timestamp prefix (e.g., `20260329000000_description.sql`).
+- **Apply locally:** `npx supabase db reset` (drops & recreates from all migrations) or `npx supabase migration up` (applies pending only).
+- **Apply remote:** `npx supabase db push` (applies pending migrations to linked project).
+- **Verify before pushing:** Run `npx supabase db push --dry-run` to preview what SQL will execute without applying.
+- **Idempotent statements:** Always use `IF NOT EXISTS` / `IF EXISTS` so migrations can safely re-run.
+- **Additive only:** Prefer adding nullable columns over renaming or dropping. Destructive changes (drop column, alter type) require careful coordination.
+- **Never edit a pushed migration.** If a pushed migration needs correction, create a new migration to fix it.
+- **Verify downstream impact before writing a migration.** Check triggers, functions, RLS policies, views, and any `SELECT *` queries that touch the affected table. Run `npx tsc --noEmit` and `npm test` after updating TypeScript types to catch breakage.
+- **Test locally first** with `npx supabase db reset` before running `db push`.
+
 ## Security Guidelines
 - **PII:** Never log PII (Personally Identifiable Information).
 - **Secrets:** Use `process.env` for all keys. Never hardcode Plaid `client_id` or `secret`.

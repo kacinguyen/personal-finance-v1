@@ -67,6 +67,23 @@ serve(async (req) => {
         has_more: boolean
       }>('/transactions/sync', syncBody)
 
+      // Pre-fetch existing review status for all incoming transactions
+      const allIncomingIds = [
+        ...syncData.added.map(tx => tx.transaction_id),
+        ...syncData.modified.map(tx => tx.transaction_id),
+      ]
+      const reviewedMap = new Map<string, { needs_review: boolean; category_id: string | null; amount_modified_by_split: boolean | null }>()
+      if (allIncomingIds.length > 0) {
+        const { data: existingTxs } = await supabase
+          .from('transactions')
+          .select('plaid_transaction_id, needs_review, category_id, amount_modified_by_split')
+          .eq('user_id', userId)
+          .in('plaid_transaction_id', allIncomingIds)
+        for (const etx of existingTxs || []) {
+          reviewedMap.set(etx.plaid_transaction_id, etx)
+        }
+      }
+
       // Process added transactions
       for (const tx of syncData.added) {
         const mapped = mapTransaction(tx, userId, item.institution_name)
@@ -81,6 +98,12 @@ serve(async (req) => {
           mapped.needs_review = false
           maybeCreateRule(mapped, resolution, userId, existingRulePatterns, newRules)
         }
+        // Preserve review status if user already reviewed this transaction
+        const existingReview = reviewedMap.get(tx.transaction_id)
+        if (existingReview && !existingReview.needs_review) {
+          mapped.needs_review = false
+          mapped.category_id = existingReview.category_id
+        }
         const { error } = await supabase
           .from('transactions')
           .upsert(mapped, { onConflict: 'plaid_transaction_id' })
@@ -89,13 +112,7 @@ serve(async (req) => {
 
       // Process modified transactions
       for (const tx of syncData.modified) {
-        // Check if the transaction has a user-modified split amount
-        const { data: existing } = await supabase
-          .from('transactions')
-          .select('amount_modified_by_split')
-          .eq('plaid_transaction_id', tx.transaction_id)
-          .eq('user_id', userId)
-          .maybeSingle()
+        const existing = reviewedMap.get(tx.transaction_id)
 
         const mapped = mapTransaction(tx, userId, item.institution_name)
         const resolution = resolveCategoryId(
@@ -108,6 +125,11 @@ serve(async (req) => {
           mapped.category_id = resolution.categoryId
           mapped.needs_review = false
           maybeCreateRule(mapped, resolution, userId, existingRulePatterns, newRules)
+        }
+        // Preserve review status if user already reviewed this transaction
+        if (existing && !existing.needs_review) {
+          mapped.needs_review = false
+          mapped.category_id = existing.category_id
         }
 
         // If amount was modified by a shared split, preserve the user's share
