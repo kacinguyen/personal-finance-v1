@@ -7,6 +7,16 @@ export type TransactionSource = 'plaid' | 'csv_import' | 'manual'
 
 export type PaymentChannel = 'online' | 'in store' | 'other'
 
+export type PlaidCounterparty = {
+  name?: string | null
+  type?: string | null
+  website?: string | null
+  logo_url?: string | null
+  confidence_level?: string | null
+  entity_id?: string | null
+  phone_number?: string | null
+}
+
 export type Transaction = {
   id: string
   user_id?: string
@@ -21,6 +31,11 @@ export type Transaction = {
   plaid_account_id: string | null
   plaid_category: string[] | null // Plaid's hierarchical category
   plaid_category_id: string | null
+  plaid_counterparty: PlaidCounterparty[] | null
+  plaid_counterparty_confidence: string | null // VERY_HIGH, HIGH, MEDIUM, LOW
+  plaid_merchant_entity_id: string | null
+  plaid_detailed_category: string | null
+  plaid_location: Record<string, unknown> | null
   pending: boolean
   payment_channel: PaymentChannel | null
   source: TransactionSource
@@ -92,6 +107,11 @@ export const csvRowToTransaction = (row: CSVTransactionRow): TransactionInsert =
   plaid_account_id: null,
   plaid_category: null,
   plaid_category_id: null,
+  plaid_counterparty: null,
+  plaid_counterparty_confidence: null,
+  plaid_merchant_entity_id: null,
+  plaid_detailed_category: null,
+  plaid_location: null,
   pending: false,
   payment_channel: null,
   source: 'csv_import',
@@ -130,6 +150,11 @@ export const plaidToTransaction = (
   plaid_account_id: plaidTx.account_id,
   plaid_category: plaidTx.category || null,
   plaid_category_id: plaidTx.category_id || null,
+  plaid_counterparty: null,
+  plaid_counterparty_confidence: null,
+  plaid_merchant_entity_id: null,
+  plaid_detailed_category: null,
+  plaid_location: null,
   pending: plaidTx.pending,
   payment_channel: (plaidTx.payment_channel as PaymentChannel) || null,
   source: 'plaid',
