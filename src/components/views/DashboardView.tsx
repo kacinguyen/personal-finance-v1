@@ -21,6 +21,7 @@ import { formatCurrency } from '../../lib/format'
 import { STATUS_COLORS, CHART_COLORS, TAB_COLORS } from '../../lib/colors'
 import { getMonthRange, getMonthData } from '../../lib/dateUtils'
 import { useExpectedIncome } from '../../hooks/useExpectedIncome'
+import { useMonthlyGoalContributions } from '../../hooks/useMonthlyGoalContributions'
 import { useCategories } from '../../hooks/useCategories'
 import { useMonthlySummary } from '../../hooks/useMonthlySummary'
 import { MonthPicker } from '../common/MonthPicker'
@@ -49,6 +50,7 @@ export function DashboardView({ selectedMonth, onMonthChange }: DashboardViewPro
 
   // Use shared hook for expected income
   const { expectedIncome, loading: incomeLoading } = useExpectedIncome(selectedMonth)
+  const { totalContributions: goalContributions, loading: goalsLoading } = useMonthlyGoalContributions(selectedMonth)
   const { categories: dbCategories, findCategoryById } = useCategories()
   const { summary, categorySummaries } = useMonthlySummary(selectedMonth)
 
@@ -266,13 +268,13 @@ export function DashboardView({ selectedMonth, onMonthChange }: DashboardViewPro
 
   const budgetTracking = useMemo(() => {
     const percentageOfBudget = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0
-    const remainingIncome = expectedIncome - totalSpent
+    const remainingIncome = expectedIncome - totalSpent - goalContributions
 
     return {
       remainingIncome,
       percentageOfBudget,
     }
-  }, [totalBudget, totalSpent, expectedIncome])
+  }, [totalBudget, totalSpent, expectedIncome, goalContributions])
 
   // Custom tooltip for the cumulative chart
   const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ dataKey: string; name: string; value: number; color: string }>; label?: string }) => {
@@ -353,7 +355,7 @@ export function DashboardView({ selectedMonth, onMonthChange }: DashboardViewPro
             className={`bg-white rounded-2xl p-6 ${cardBorder}`}
           >
             <p className="text-[10px] uppercase tracking-wider text-[#1F1410]/30 mb-2">Remaining</p>
-            {incomeLoading ? (
+            {incomeLoading || goalsLoading ? (
               <div className="h-9 w-24 bg-[#1F1410]/5 rounded-lg animate-pulse" />
             ) : (
               <p className="text-3xl font-light" style={{ color: STATUS_COLORS.success }}>
