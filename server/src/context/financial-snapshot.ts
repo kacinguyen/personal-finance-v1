@@ -56,6 +56,12 @@ export type FinancialSnapshot = {
     categoryName: string; budgetType: string; limit: number; spent: number; remaining: number
   }[]
   upcomingRsuVests: { vestDate: string; shares: number; estimatedValue: number }[]
+  pendingReimbursements: { count: number; totalOwed: number }
+  pendingAdjustments: {
+    count: number
+    totalExpectedBack: number
+    items: { merchant: string; expectedAmount: number; description: string | null; expiresAt: string | null }[]
+  }
 }
 
 function getMonthKey(date: Date): string {
@@ -111,6 +117,8 @@ export async function buildFinancialSnapshot(
     paystubsRes,
     rsusRes,
     budgetsRes,
+    reimbursementsRes,
+    adjustmentsRes,
   ] = await Promise.all([
     supabase
       .from('monthly_summaries')
@@ -147,6 +155,16 @@ export async function buildFinancialSnapshot(
       .select('*, categories(name)')
       .eq('user_id', userId)
       .eq('is_active', true),
+    supabase
+      .from('pending_reimbursements')
+      .select('others_share')
+      .eq('user_id', userId)
+      .eq('status', 'pending'),
+    supabase
+      .from('pending_adjustments')
+      .select('expected_amount, description, expires_at, transaction_id, transactions(merchant)')
+      .eq('user_id', userId)
+      .eq('status', 'pending'),
   ])
 
   const summaries = summariesRes.data || []
@@ -155,6 +173,8 @@ export async function buildFinancialSnapshot(
   const paystubs = paystubsRes.data || []
   const rsus = rsusRes.data || []
   const budgetRows = budgetsRes.data || []
+  const reimbursementRows = reimbursementsRes.data || []
+  const adjustmentRows = adjustmentsRes.data || []
 
   // Current month summary
   const current = summaries.find((s: any) => s.month === currentMonthKey) || {} as any
@@ -282,6 +302,20 @@ export async function buildFinancialSnapshot(
       shares: r.shares_vested || 0,
       estimatedValue: r.total_gross_value || 0,
     })),
+    pendingReimbursements: {
+      count: reimbursementRows.length,
+      totalOwed: reimbursementRows.reduce((s: number, r: any) => s + (r.others_share || 0), 0),
+    },
+    pendingAdjustments: {
+      count: adjustmentRows.length,
+      totalExpectedBack: adjustmentRows.reduce((s: number, r: any) => s + (r.expected_amount || 0), 0),
+      items: adjustmentRows.map((a: any) => ({
+        merchant: (a as any).transactions?.merchant || 'Unknown',
+        expectedAmount: a.expected_amount,
+        description: a.description,
+        expiresAt: a.expires_at,
+      })),
+    },
   }
 }
 
@@ -358,6 +392,22 @@ export function serializeSnapshot(s: FinancialSnapshot): string {
     lines.push('## Upcoming RSU Vests')
     for (const v of s.upcomingRsuVests) {
       lines.push(`  ${v.vestDate}: ${v.shares} shares (~${fmt(v.estimatedValue)})`)
+    }
+    lines.push('')
+  }
+
+  // Pending Returns & Reimbursements
+  if (s.pendingReimbursements.count > 0 || s.pendingAdjustments.count > 0) {
+    lines.push('## Pending Returns & Reimbursements')
+    if (s.pendingReimbursements.count > 0) {
+      lines.push(`  Pending reimbursements: ${s.pendingReimbursements.count} (${fmt(s.pendingReimbursements.totalOwed)} owed back)`)
+    }
+    if (s.pendingAdjustments.count > 0) {
+      lines.push(`  Expected returns: ${s.pendingAdjustments.count} (${fmt(s.pendingAdjustments.totalExpectedBack)} expected back)`)
+      for (const a of s.pendingAdjustments.items) {
+        const expiry = a.expiresAt ? `, return window closes ${a.expiresAt}` : ''
+        lines.push(`    - ${a.merchant}: ${fmt(a.expectedAmount)} back${a.description ? ` (${a.description})` : ''}${expiry}`)
+      }
     }
     lines.push('')
   }
