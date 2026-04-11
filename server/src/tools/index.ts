@@ -11,6 +11,11 @@ import { allocatePaycheckTool } from './allocate-paycheck.js'
 import { generateInsightsTool } from './generate-insights.js'
 import { compareMonthsTool } from './compare-months.js'
 import { getTopMerchantsTool } from './get-top-merchants.js'
+import { updateTransactionNoteTool } from './update-transaction-note.js'
+import { recategorizeTransactionTool } from './recategorize-transaction.js'
+import { splitWithOthersTool } from './split-with-others.js'
+import { createExpectedReturnTool } from './create-expected-return.js'
+import { resolveExpectedReturnTool } from './resolve-expected-return.js'
 
 export function createTools(supabase: SupabaseClient, userId: string) {
   return {
@@ -26,5 +31,10 @@ export function createTools(supabase: SupabaseClient, userId: string) {
     generate_insights: generateInsightsTool(supabase, userId),
     compare_months: compareMonthsTool(supabase, userId),
     get_top_merchants: getTopMerchantsTool(supabase, userId),
+    update_transaction_note: updateTransactionNoteTool(supabase, userId),
+    recategorize_transaction: recategorizeTransactionTool(supabase, userId),
+    split_with_others: splitWithOthersTool(supabase, userId),
+    create_expected_return: createExpectedReturnTool(supabase, userId),
+    resolve_expected_return: resolveExpectedReturnTool(supabase, userId),
   }
 }

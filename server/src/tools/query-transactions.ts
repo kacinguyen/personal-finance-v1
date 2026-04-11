@@ -52,6 +52,7 @@ export function queryTransactionsTool(supabase: SupabaseClient, userId: string) 
       }
 
       return results.map((t: any) => ({
+        id: t.id,
         date: t.date,
         merchant: t.merchant,
         amount: t.amount,
