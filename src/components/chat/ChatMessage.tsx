@@ -18,6 +18,17 @@ function formatContent(content: string): JSX.Element {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
 
+    // Headings (### / ## / #)
+    const headingMatch = line.match(/^(#{1,3})\s+(.*)/)
+    if (headingMatch) {
+      elements.push(
+        <p key={i} className="text-xs font-semibold uppercase tracking-wide text-[#1F1410]/40 mt-1">
+          {headingMatch[2]}
+        </p>
+      )
+      continue
+    }
+
     // Bullet points
     if (line.match(/^[-•*]\s/)) {
       const text = line.replace(/^[-•*]\s/, '')
