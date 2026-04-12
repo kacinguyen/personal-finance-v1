@@ -11,14 +11,13 @@ import { SavingsView } from './components/views/SavingsView'
 import { ProfileView } from './components/views/ProfileView'
 import { BudgetView } from './components/views/BudgetView'
 import { AccountsView } from './components/views/AccountsView'
-import { ChatView } from './components/views/ChatView'
 import { ChatButton } from './components/chat/ChatButton'
 import { ChatPanel } from './components/chat/ChatPanel'
 import { ProtectedRoute } from './components/common/ProtectedRoute'
 import { ChatProvider, useChatContext } from './contexts/ChatContext'
 import { useMediaQuery } from './hooks/useMediaQuery'
 
-type Tab = 'dashboard' | 'transactions' | 'income' | 'expenses' | 'savings' | 'budget' | 'accounts' | 'chat' | 'profile'
+type Tab = 'dashboard' | 'transactions' | 'income' | 'expenses' | 'savings' | 'budget' | 'accounts' | 'profile'
 
 const CHAT_PANEL_WIDTH = 400
 
@@ -32,8 +31,7 @@ function AppContent() {
   const isDesktop = useMediaQuery('(min-width: 1024px)')
   const { isOpen: isChatOpen } = useChatContext()
 
-  const showChatOverlay = activeTab !== 'chat'
-  const mainPaddingRight = isDesktop && isChatOpen && showChatOverlay ? CHAT_PANEL_WIDTH : 0
+  const mainPaddingRight = isDesktop && isChatOpen ? CHAT_PANEL_WIDTH : 0
 
   const renderView = () => {
     switch (activeTab) {
@@ -51,8 +49,6 @@ function AppContent() {
         return <BudgetView selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
       case 'accounts':
         return <AccountsView />
-      case 'chat':
-        return <ChatView />
       case 'profile':
         return <ProfileView />
       default:
@@ -84,12 +80,8 @@ function AppContent() {
         </motion.main>
         <BottomTabBar activeTab={activeTab} onTabChange={setActiveTab} />
       </div>
-      {showChatOverlay && (
-        <>
-          <ChatButton />
-          <ChatPanel />
-        </>
-      )}
+      <ChatButton />
+      <ChatPanel />
     </>
   )
 }

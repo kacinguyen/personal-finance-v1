@@ -7,11 +7,10 @@ import {
   PiggyBank,
   Target,
   Landmark,
-  MessageCircle,
 } from 'lucide-react'
 import { TAB_COLORS } from '../../lib/colors'
 
-type Tab = 'dashboard' | 'transactions' | 'income' | 'expenses' | 'savings' | 'budget' | 'accounts' | 'chat' | 'profile'
+type Tab = 'dashboard' | 'transactions' | 'income' | 'expenses' | 'savings' | 'budget' | 'accounts' | 'profile'
 
 type BottomTabBarProps = {
   activeTab: Tab
@@ -26,7 +25,6 @@ const tabs = [
   { id: 'budget' as Tab, label: 'Budget', icon: Target, color: TAB_COLORS.budget },
   { id: 'savings' as Tab, label: 'Savings', icon: PiggyBank, color: TAB_COLORS.savings },
   { id: 'accounts' as Tab, label: 'Accounts', icon: Landmark, color: TAB_COLORS.accounts },
-  { id: 'chat' as Tab, label: 'Chat', icon: MessageCircle, color: TAB_COLORS.accounts },
 ]
 
 export function BottomTabBar({ activeTab, onTabChange }: BottomTabBarProps) {
