@@ -1080,7 +1080,7 @@ export function TransactionsView({ selectedMonth, onMonthChange, onNavigate }: T
                 <button
                   key={tab.id}
                   onClick={() => setFilters(f => ({ ...f, reviewStatus: tab.id }))}
-                  className={`relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
+                  className={`relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
                     filters.reviewStatus === tab.id
                       ? 'text-[#8B5CF6]'
                       : 'text-[#1F1410]/50 hover:text-[#1F1410]/80'

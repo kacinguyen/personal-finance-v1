@@ -69,9 +69,10 @@ function formatDisplayDate(dateStr: string): string {
 type TransactionFeedProps = {
   selectedMonth: Date
   onMonthChange: (month: Date) => void
+  isChatOpen?: boolean
 }
 
-export function TransactionFeed({ selectedMonth, onMonthChange }: TransactionFeedProps) {
+export function TransactionFeed({ selectedMonth, onMonthChange, isChatOpen }: TransactionFeedProps) {
   const { userId } = useUser()
   const { categories: dbCategories, findCategoryByName, refetch: refetchCategories } = useCategories()
   const [transactions, setTransactions] = useState<UITransaction[]>([])
@@ -580,7 +581,7 @@ export function TransactionFeed({ selectedMonth, onMonthChange }: TransactionFee
         </motion.div>
 
         {/* Stat Cards Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${isChatOpen ? '2xl:grid-cols-4' : 'lg:grid-cols-4'} gap-4 mb-8`}>
           {/* Spent This Month */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -650,7 +651,7 @@ export function TransactionFeed({ selectedMonth, onMonthChange }: TransactionFee
         </div>
 
         {/* Insight Cards + Spending Velocity Chart */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr,2fr] gap-4 mb-8 items-stretch">
+        <div className={`grid grid-cols-1 ${isChatOpen ? '2xl:grid-cols-[1fr,2fr]' : 'lg:grid-cols-[1fr,2fr]'} gap-4 mb-8 items-stretch`}>
           {/* Left column: stacked insight cards */}
           <div className="space-y-4">
             {/* Over Budget Insight Card */}
