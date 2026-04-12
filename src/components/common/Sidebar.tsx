@@ -8,7 +8,6 @@ import {
   PiggyBank,
   Target,
   Landmark,
-  MessageCircle,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -16,7 +15,7 @@ import { useUser } from '../../hooks/useUser'
 import { TAB_COLORS } from '../../lib/colors'
 import { SHADOWS } from '../../lib/styles'
 
-type Tab = 'dashboard' | 'transactions' | 'income' | 'expenses' | 'savings' | 'budget' | 'accounts' | 'chat' | 'profile'
+type Tab = 'dashboard' | 'transactions' | 'income' | 'expenses' | 'savings' | 'budget' | 'accounts' | 'profile'
 
 type SidebarProps = {
   activeTab: Tab
@@ -69,12 +68,6 @@ const tabs = [
     id: 'accounts' as Tab,
     label: 'Accounts',
     icon: Landmark,
-    color: TAB_COLORS.accounts,
-  },
-  {
-    id: 'chat' as Tab,
-    label: 'Chat',
-    icon: MessageCircle,
     color: TAB_COLORS.accounts,
   },
 ]
