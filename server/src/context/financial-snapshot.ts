@@ -30,6 +30,11 @@ export type FinancialSnapshot = {
     daysRemaining: number
     budgetUtilization: { needsPct: number; wantsPct: number; totalPct: number }
   }
+  previousMonth: {
+    surplus: number  // positive = under budget, negative = over budget
+    totalBudget: number
+    totalSpending: number
+  }
   averages: {
     threeMonth: { income: number; spending: number; needs: number; wants: number; netSavings: number }
     sixMonth: { income: number; spending: number; needs: number; wants: number; netSavings: number }
@@ -45,12 +50,14 @@ export type FinancialSnapshot = {
   }
   goals: {
     name: string; goalType: string; currentAmount: number; targetAmount: number
-    percentComplete: number; priority: number; isOnTrack: boolean
+    percentComplete: number; priority: number; isOnTrack: boolean; deadline: string | null
   }[]
   paycheck: {
     latestGross: number; latestNet: number; avgGross: number; avgNet: number
     monthly401k: number; monthlyEmployerMatch: number; monthlyHSA: number; monthlyESPP: number
     effectiveTaxRate: number
+    nextPayDate: string | null
+    payFrequencyDays: number | null
   }
   budgets: {
     categoryName: string; budgetType: string; limit: number; spent: number; remaining: number
@@ -216,6 +223,17 @@ export async function buildFinancialSnapshot(
     (latest.local_tax || 0) + (latest.state_disability_insurance || 0) + (latest.other_taxes || 0)
   const effectiveTaxRate = latest.gross_pay ? totalTaxes / latest.gross_pay : 0
 
+  // Next paycheck projection
+  let nextPayDate: string | null = null
+  let payFrequencyDays: number | null = null
+  if (paystubs.length >= 2) {
+    const latest2 = new Date(paystubs[0].pay_date)
+    const prev2 = new Date(paystubs[1].pay_date)
+    payFrequencyDays = Math.round((latest2.getTime() - prev2.getTime()) / (1000 * 60 * 60 * 24))
+    const projected = new Date(latest2.getTime() + payFrequencyDays * 24 * 60 * 60 * 1000)
+    nextPayDate = projected.toISOString().split('T')[0]
+  }
+
   // Monthly category spending for budgets
   const monthlyCatRes = await supabase
     .from('monthly_category_summaries')
@@ -258,6 +276,16 @@ export async function buildFinancialSnapshot(
         totalPct: Math.round(((current.total_spending || 0) / totalBudget) * 100),
       },
     },
+    previousMonth: (() => {
+      const prev = summaries[1] || {} as any
+      const prevBudget = prev.total_budget || 0
+      const prevSpending = prev.total_spending || 0
+      return {
+        surplus: prevBudget - prevSpending,
+        totalBudget: prevBudget,
+        totalSpending: prevSpending,
+      }
+    })(),
     averages: {
       threeMonth: computeAverages(summaries, 3),
       sixMonth: computeAverages(summaries, 6),
@@ -283,6 +311,7 @@ export async function buildFinancialSnapshot(
         percentComplete: pct,
         priority: g.priority || 99,
         isOnTrack: pct >= 50, // Simplified heuristic
+        deadline: g.deadline || null,
       }
     }),
     paycheck: {
@@ -295,6 +324,8 @@ export async function buildFinancialSnapshot(
       monthlyHSA: latest.hsa_contribution || 0,
       monthlyESPP: latest.espp_contribution || 0,
       effectiveTaxRate: Math.round(effectiveTaxRate * 100) / 100,
+      nextPayDate,
+      payFrequencyDays,
     },
     budgets,
     upcomingRsuVests: rsus.map((r: any) => ({
@@ -338,6 +369,10 @@ export function serializeSnapshot(s: FinancialSnapshot): string {
   lines.push(`Spending: ${fmt(s.currentMonth.spending.total)} (needs ${fmt(s.currentMonth.spending.needs)}, wants ${fmt(s.currentMonth.spending.wants)}, goal-funded ${fmt(s.currentMonth.spending.goalFunded)})`)
   lines.push(`Net savings: ${fmt(s.currentMonth.netSavings)}`)
   lines.push(`Budget utilization: needs ${s.currentMonth.budgetUtilization.needsPct}%, wants ${s.currentMonth.budgetUtilization.wantsPct}%, total ${s.currentMonth.budgetUtilization.totalPct}%`)
+  if (s.previousMonth.totalBudget > 0) {
+    const surplusLabel = s.previousMonth.surplus >= 0 ? 'under budget' : 'over budget'
+    lines.push(`Last month: ${fmt(s.previousMonth.totalSpending)} spent of ${fmt(s.previousMonth.totalBudget)} budget — ${fmt(Math.abs(s.previousMonth.surplus))} ${surplusLabel} (carryover)`)
+  }
   lines.push('')
 
   // Averages
@@ -364,7 +399,8 @@ export function serializeSnapshot(s: FinancialSnapshot): string {
   if (s.goals.length > 0) {
     lines.push('## Goals')
     for (const g of s.goals) {
-      lines.push(`  ${g.name} (${g.goalType}, priority ${g.priority}): ${fmt(g.currentAmount)}/${fmt(g.targetAmount)} (${g.percentComplete}%)`)
+      const deadlineStr = g.deadline ? `, by ${g.deadline}` : ''
+      lines.push(`  ${g.name} (${g.goalType}, priority ${g.priority}): ${fmt(g.currentAmount)}/${fmt(g.targetAmount)} (${g.percentComplete}%${deadlineStr})`)
     }
     lines.push('')
   }
@@ -375,6 +411,9 @@ export function serializeSnapshot(s: FinancialSnapshot): string {
   lines.push(`401k: ${fmt(s.paycheck.monthly401k)}/mo, Employer match: ${fmt(s.paycheck.monthlyEmployerMatch)}/mo`)
   lines.push(`HSA: ${fmt(s.paycheck.monthlyHSA)}/mo, ESPP: ${fmt(s.paycheck.monthlyESPP)}/mo`)
   lines.push(`Effective tax rate: ${Math.round(s.paycheck.effectiveTaxRate * 100)}%`)
+  if (s.paycheck.nextPayDate) {
+    lines.push(`Next paycheck: ~${s.paycheck.nextPayDate} (every ${s.paycheck.payFrequencyDays} days, ~${fmt(s.paycheck.avgNet)} net)`)
+  }
   lines.push('')
 
   // Budgets
