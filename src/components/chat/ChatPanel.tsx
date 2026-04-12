@@ -1,17 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
-import { useFinanceChat } from '../../hooks/useFinanceChat'
+import { useChatContext } from '../../contexts/ChatContext'
 import { ChatMessage } from './ChatMessage'
 import { ChatInput } from './ChatInput'
 
-interface ChatPanelProps {
-  isOpen: boolean
-  onClose: () => void
-}
-
-export function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
-  const { messages, sendMessage, status } = useFinanceChat()
+export function ChatPanel() {
+  const { messages, sendMessage, status, isOpen, closeChat } = useChatContext()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [input, setInput] = useState('')
 
@@ -41,7 +36,7 @@ export function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-40 bg-black/20 lg:hidden"
-            onClick={onClose}
+            onClick={closeChat}
           />
 
           <motion.div
@@ -63,7 +58,7 @@ export function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
                 </div>
               </div>
               <button
-                onClick={onClose}
+                onClick={closeChat}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-[#1F1410]/40 transition-colors hover:bg-[#1F1410]/5 hover:text-[#1F1410]/60"
               >
                 <X size={18} />
