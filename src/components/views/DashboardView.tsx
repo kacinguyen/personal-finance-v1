@@ -42,9 +42,10 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 type DashboardViewProps = {
   selectedMonth: Date
   onMonthChange: (month: Date) => void
+  isChatOpen?: boolean
 }
 
-export function DashboardView({ selectedMonth, onMonthChange }: DashboardViewProps) {
+export function DashboardView({ selectedMonth, onMonthChange, isChatOpen }: DashboardViewProps) {
   const [yearlyChartData, setYearlyChartData] = useState<YearlyChartData[]>([])
   const [chartYear, setChartYear] = useState(() => new Date().getFullYear())
 
@@ -320,7 +321,7 @@ export function DashboardView({ selectedMonth, onMonthChange }: DashboardViewPro
         </motion.div>
 
         {/* Key Metrics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className={`grid grid-cols-1 md:grid-cols-2 ${isChatOpen ? '2xl:grid-cols-4' : 'lg:grid-cols-4'} gap-4 mb-8`}>
           {/* Total Spent */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -377,7 +378,7 @@ export function DashboardView({ selectedMonth, onMonthChange }: DashboardViewPro
         </div>
 
         {/* Insight Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+        <div className={`grid grid-cols-1 md:grid-cols-2 ${isChatOpen ? '2xl:grid-cols-3' : 'lg:grid-cols-3'} gap-4 mb-8`}>
           {/* Top 5 Spending Categories */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}

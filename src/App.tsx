@@ -36,13 +36,13 @@ function AppContent() {
   const renderView = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardView selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
+        return <DashboardView selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} isChatOpen={isDesktop && isChatOpen} />
       case 'transactions':
         return <TransactionsView selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} onNavigate={(tab) => setActiveTab(tab as Tab)} />
       case 'income':
         return <IncomeView selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
       case 'expenses':
-        return <TransactionFeed selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
+        return <TransactionFeed selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} isChatOpen={isDesktop && isChatOpen} />
       case 'savings':
         return <SavingsView />
       case 'budget':
