@@ -18,6 +18,7 @@ interface Props {
   paystubs: PaystubRecord[]
   selectedMonth: Date
   reimbursementTransactions?: Transaction[]
+  salaryTransactions?: Transaction[]
 }
 
 const SOURCES = {
@@ -68,7 +69,7 @@ function filteredTotal(bySource: Record<SourceKey, number>, filters: Set<SourceK
   return SOURCE_KEYS.filter(k => filters.has(k)).reduce((s, k) => s + bySource[k], 0)
 }
 
-export function YearlyIncomeChart({ paystubs, selectedMonth, reimbursementTransactions = [] }: Props) {
+export function YearlyIncomeChart({ paystubs, selectedMonth, reimbursementTransactions = [], salaryTransactions = [] }: Props) {
   const [activeFilters, setActiveFilters] = useState<Set<SourceKey>>(
     () => new Set(SOURCE_KEYS)
   )
@@ -94,7 +95,7 @@ export function YearlyIncomeChart({ paystubs, selectedMonth, reimbursementTransa
     const groupByMonth = (targetYear: number) => {
       const monthly = new Map<number, PaystubRecord[]>()
       for (const p of paystubs) {
-        const d = new Date(p.pay_date)
+        const d = new Date(p.pay_date + 'T00:00:00')
         if (d.getFullYear() === targetYear) {
           const m = d.getMonth()
           if (!monthly.has(m)) monthly.set(m, [])
@@ -110,6 +111,14 @@ export function YearlyIncomeChart({ paystubs, selectedMonth, reimbursementTransa
       const d = new Date(tx.date + 'T00:00:00')
       const key = `${d.getFullYear()}-${d.getMonth()}`
       reimbursementsByYearMonth.set(key, (reimbursementsByYearMonth.get(key) || 0) + Math.abs(tx.amount))
+    }
+
+    // Group salary transactions by year and month (fallback when paystubs are missing)
+    const salaryTxByYearMonth = new Map<string, number>()
+    for (const tx of salaryTransactions) {
+      const d = new Date(tx.date + 'T00:00:00')
+      const key = `${d.getFullYear()}-${d.getMonth()}`
+      salaryTxByYearMonth.set(key, (salaryTxByYearMonth.get(key) || 0) + Math.abs(tx.amount))
     }
 
     const currentYearData = groupByMonth(year)
@@ -134,7 +143,21 @@ export function YearlyIncomeChart({ paystubs, selectedMonth, reimbursementTransa
       const curSources = extractSources(curStubs, curReimbursement)
       const lastSources = extractSources(lastStubs, lastReimbursement)
 
-      const hasCurData = curStubs.length > 0 || curReimbursement > 0
+      // Use salary transactions as fallback when no paystubs exist for this month
+      if (curStubs.length === 0) {
+        const salaryTxAmount = salaryTxByYearMonth.get(`${year}-${m}`) || 0
+        if (salaryTxAmount > 0) {
+          curSources.salary = salaryTxAmount
+        }
+      }
+      if (lastStubs.length === 0) {
+        const salaryTxAmount = salaryTxByYearMonth.get(`${lastYearVal}-${m}`) || 0
+        if (salaryTxAmount > 0) {
+          lastSources.salary = salaryTxAmount
+        }
+      }
+
+      const hasCurData = curStubs.length > 0 || curReimbursement > 0 || curSources.salary > 0
       const isForecast = !hasCurData && (year > now.getFullYear() || (year === now.getFullYear() && m >= now.getMonth()))
 
       const curTotal = filteredTotal(curSources, activeFilters)
@@ -198,7 +221,7 @@ export function YearlyIncomeChart({ paystubs, selectedMonth, reimbursementTransa
     }
 
     return { chartData: rows, ytdTotal: ytd, lastYearTotal: lastYtd }
-  }, [paystubs, selectedMonth, activeFilters, year, lastYearVal, reimbursementTransactions])
+  }, [paystubs, selectedMonth, activeFilters, year, lastYearVal, reimbursementTransactions, salaryTransactions])
 
   if (paystubs.length === 0) return null
 

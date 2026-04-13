@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai'
+import { BudgetRecommendationCard } from './BudgetRecommendationCard'
 
 interface ChatMessageProps {
   message: UIMessage
@@ -11,12 +12,91 @@ function getTextContent(message: UIMessage): string {
     .join('')
 }
 
+function getBudgetProposal(message: UIMessage): { targetMonth: string; changes: any[] } | null {
+  for (const part of message.parts) {
+    if (part.type === 'tool-invocation') {
+      const inv = (part as any).toolInvocation
+      if (inv?.toolName === 'propose_budget_changes' && inv?.state === 'result' && inv?.result?.changes) {
+        return { targetMonth: inv.result.targetMonth, changes: inv.result.changes }
+      }
+    }
+  }
+  return null
+}
+
+function isTableSeparator(line: string): boolean {
+  return /^\|[\s-:|]+\|$/.test(line.trim())
+}
+
+function parseTableRow(line: string): string[] {
+  return line
+    .split('|')
+    .slice(1, -1) // remove empty first/last from leading/trailing |
+    .map(cell => cell.trim())
+}
+
+function renderTable(tableLines: string[], startKey: number): JSX.Element {
+  // First line is header, second is separator, rest are body rows
+  const headerCells = parseTableRow(tableLines[0])
+  const bodyLines = tableLines.slice(2) // skip header + separator
+
+  return (
+    <div key={startKey} className="my-1 overflow-x-auto rounded-lg border border-[#1F1410]/5">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-[#1F1410]/5 bg-[#1F1410]/[0.02]">
+            {headerCells.map((cell, j) => (
+              <th key={j} className="px-2.5 py-1.5 text-left font-semibold text-[#1F1410]/50 whitespace-nowrap">
+                {cell}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {bodyLines.map((row, j) => {
+            const cells = parseTableRow(row)
+            return (
+              <tr key={j} className={j % 2 === 1 ? 'bg-[#1F1410]/[0.01]' : ''}>
+                {cells.map((cell, k) => (
+                  <td key={k} className="px-2.5 py-1.5 text-[#1F1410]/70 whitespace-nowrap">
+                    {renderInline(cell)}
+                  </td>
+                ))}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function formatContent(content: string): JSX.Element {
   const lines = content.split('\n')
   const elements: JSX.Element[] = []
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
+
+    // Markdown table: detect header row followed by separator row
+    if (
+      line.trim().startsWith('|') &&
+      i + 1 < lines.length &&
+      isTableSeparator(lines[i + 1])
+    ) {
+      const tableLines: string[] = [line, lines[i + 1]]
+      let j = i + 2
+      while (j < lines.length && lines[j].trim().startsWith('|')) {
+        tableLines.push(lines[j])
+        j++
+      }
+      elements.push(renderTable(tableLines, i))
+      i = j - 1 // skip past table lines
+      continue
+    }
+
+    // Skip orphan separator lines
+    if (isTableSeparator(line)) continue
 
     // Headings (### / ## / #)
     const headingMatch = line.match(/^(#{1,3})\s+(.*)/)
@@ -92,8 +172,9 @@ function renderInline(text: string): (string | JSX.Element)[] {
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user'
   const text = getTextContent(message)
+  const budgetProposal = !isUser ? getBudgetProposal(message) : null
 
-  if (!text) return null
+  if (!text && !budgetProposal) return null
 
   return (
     <div className={`flex gap-2.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -103,13 +184,31 @@ export function ChatMessage({ message }: ChatMessageProps) {
         </div>
       )}
       <div
-        className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed ${
+        className={`max-w-[85%] ${
           isUser
-            ? 'bg-[#14B8A6]/10 text-[#1F1410]'
-            : 'border border-[#1F1410]/5 bg-white text-[#1F1410]'
+            ? 'rounded-xl px-3.5 py-2.5 text-sm leading-relaxed bg-[#14B8A6]/10 text-[#1F1410]'
+            : 'text-sm leading-relaxed text-[#1F1410]'
         }`}
       >
-        {isUser ? text : formatContent(text)}
+        {isUser ? (
+          text
+        ) : (
+          <>
+            {text && (
+              <div className="rounded-xl px-3.5 py-2.5 border border-[#1F1410]/5 bg-white">
+                {formatContent(text)}
+              </div>
+            )}
+            {budgetProposal && (
+              <div className="mt-2">
+                <BudgetRecommendationCard
+                  targetMonth={budgetProposal.targetMonth}
+                  changes={budgetProposal.changes}
+                />
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   )

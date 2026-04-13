@@ -16,6 +16,10 @@ import { recategorizeTransactionTool } from './recategorize-transaction.js'
 import { splitWithOthersTool } from './split-with-others.js'
 import { createExpectedReturnTool } from './create-expected-return.js'
 import { resolveExpectedReturnTool } from './resolve-expected-return.js'
+import { gatherBudgetContextTool } from './gather-budget-context.js'
+import { addBudgetNoteTool } from './add-budget-note.js'
+import { applyBudgetRecommendationsTool } from './apply-budget-recommendations.js'
+import { proposeBudgetChangesTool } from './propose-budget-changes.js'
 
 export function createTools(supabase: SupabaseClient, userId: string) {
   return {
@@ -36,5 +40,9 @@ export function createTools(supabase: SupabaseClient, userId: string) {
     split_with_others: splitWithOthersTool(supabase, userId),
     create_expected_return: createExpectedReturnTool(supabase, userId),
     resolve_expected_return: resolveExpectedReturnTool(supabase, userId),
+    gather_budget_context: gatherBudgetContextTool(supabase, userId),
+    add_budget_note: addBudgetNoteTool(supabase, userId),
+    apply_budget_recommendations: applyBudgetRecommendationsTool(supabase, userId),
+    propose_budget_changes: proposeBudgetChangesTool(supabase, userId),
   }
 }
