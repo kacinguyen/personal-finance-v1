@@ -4,6 +4,7 @@ import {
   LucideIcon,
   Loader2,
   Trash2,
+  Sparkles,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useUser } from '../../hooks/useUser'
@@ -15,6 +16,10 @@ import type { CategoryType } from '../../types/category'
 import { BudgetSummaryCard } from '../budget/BudgetSummaryCard'
 import { AddCategoryDropdown } from '../budget/AddCategoryDropdown'
 import { BudgetCategoryTable } from '../budget/BudgetCategoryTable'
+import { useChatContext } from '../../contexts/ChatContext'
+import { formatMonth } from '../../lib/dateUtils'
+import { useAuth } from '../../contexts/AuthContext'
+import { AGENT_API_URL } from '../../lib/agentApi'
 
 // Database budget type with joined category data
 type DBBudgetWithCategory = {
@@ -109,6 +114,8 @@ type BudgetViewProps = {
 }
 
 export function BudgetView({ selectedMonth, onMonthChange }: BudgetViewProps) {
+  const { openChat, budgetVersion, setBudgetProposal, messages } = useChatContext()
+  const { session } = useAuth()
   const { userId } = useUser()
   const { createCategory: createDbCategory, updateCategory: updateDbCategory, updateCategoryOrder, deleteCategory: deleteDbCategory, seedDefaultCategories, needCategories, wantCategories, incomeCategories, transferCategories, loading: categoriesLoading } = useCategories()
   const [budgets, setBudgets] = useState<CategoryBudget[]>([])
@@ -248,26 +255,37 @@ export function BudgetView({ selectedMonth, onMonthChange }: BudgetViewProps) {
   }, [seedDefaultData, categoriesLoading, needCategories, wantCategories, incomeCategories, transferCategories, userId])
 
 
-  // Fetch last month's budget snapshots and merge into budgets
-  const fetchLastMonthBudgets = useCallback(async () => {
+  // Fetch monthly budget snapshots: selected month overrides + last month for comparison
+  const fetchMonthlyBudgets = useCallback(async () => {
+    const currentMonthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}-01`
     const lastMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1)
-    const monthStr = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}-01`
+    const lastMonthStr = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}-01`
 
     const { data, error } = await supabase
       .from('budget_months')
-      .select('budget_id, monthly_limit')
-      .eq('month', monthStr)
+      .select('budget_id, monthly_limit, month')
+      .in('month', [currentMonthStr, lastMonthStr])
 
     if (error) {
-      console.error('Error fetching last month budgets:', error)
+      console.error('Error fetching monthly budgets:', error)
       return
     }
 
     if (data && data.length > 0) {
-      const lastMonthMap = new Map(data.map(d => [d.budget_id, Number(d.monthly_limit)]))
+      const currentMonthMap = new Map<string, number>()
+      const lastMonthMap = new Map<string, number>()
+      for (const d of data) {
+        if (d.month === currentMonthStr) {
+          currentMonthMap.set(d.budget_id, Number(d.monthly_limit))
+        } else {
+          lastMonthMap.set(d.budget_id, Number(d.monthly_limit))
+        }
+      }
       setBudgets(prev =>
         prev.map(b => ({
           ...b,
+          // Override budget with month-specific snapshot if it exists
+          budget: currentMonthMap.has(b.id) ? currentMonthMap.get(b.id)! : b.budget,
           lastMonthBudget: lastMonthMap.get(b.id) ?? 0,
         }))
       )
@@ -279,12 +297,19 @@ export function BudgetView({ selectedMonth, onMonthChange }: BudgetViewProps) {
     fetchBudgets()
   }, [fetchBudgets, selectedMonth])
 
+  // Refetch budgets when Pachi applies budget changes via chat
+  useEffect(() => {
+    if (budgetVersion > 0) {
+      fetchBudgets()
+    }
+  }, [budgetVersion, fetchBudgets])
+
   // Fetch last month budgets after main budgets load
   useEffect(() => {
     if (budgets.length > 0 && !loading) {
-      fetchLastMonthBudgets()
+      fetchMonthlyBudgets()
     }
-  }, [loading, budgets.length, fetchLastMonthBudgets])
+  }, [loading, budgets.length, fetchMonthlyBudgets])
 
   // IDs of categories that are parents (have children) — exclude from totals to avoid double-counting
   const parentCategoryIds = useMemo(() => {
@@ -318,29 +343,30 @@ export function BudgetView({ selectedMonth, onMonthChange }: BudgetViewProps) {
 
   // Update budget in database (debounced) + upsert monthly snapshot
   const updateBudgetInDB = useCallback(async (id: string, value: number) => {
+    if (!userId) return
+    const monthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}-01`
+
+    // Write to budget_months for the selected month (scoped change)
+    const { error: upsertError } = await supabase
+      .from('budget_months')
+      .upsert(
+        { user_id: userId, budget_id: id, month: monthStr, monthly_limit: value },
+        { onConflict: 'budget_id,month' }
+      )
+
+    if (upsertError) {
+      console.error('Error upserting budget_months:', upsertError)
+      return
+    }
+
+    // Also update the global default so new months inherit this value
     const { error } = await supabase
       .from('budgets')
       .update({ monthly_limit: value })
       .eq('id', id)
 
     if (error) {
-      console.error('Error updating budget:', error)
-      return
-    }
-
-    // Upsert into budget_months for the selected month
-    if (userId) {
-      const monthStr = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}-01`
-      const { error: upsertError } = await supabase
-        .from('budget_months')
-        .upsert(
-          { user_id: userId, budget_id: id, month: monthStr, monthly_limit: value },
-          { onConflict: 'budget_id,month' }
-        )
-
-      if (upsertError) {
-        console.error('Error upserting budget_months:', upsertError)
-      }
+      console.error('Error updating budget default:', error)
     }
   }, [userId, selectedMonth])
 
@@ -603,7 +629,46 @@ export function BudgetView({ selectedMonth, onMonthChange }: BudgetViewProps) {
           {/* Header with Add Button Dropdown */}
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-[#1F1410]">Categories</h2>
-            <AddCategoryDropdown onCreateCategory={handleCreateCategory} />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  const targetMonth = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}-01`
+                  openChat(`Suggest budget adjustments for ${formatMonth(selectedMonth)}`)
+                  try {
+                    const res = await fetch(`${AGENT_API_URL}/budget-suggestions`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${session?.access_token || ''}`,
+                      },
+                      body: JSON.stringify({
+                        targetMonth,
+                        chatContext: messages.slice(-6).map((m: any) =>
+                          m.parts?.filter((p: any) => p.type === 'text').map((p: any) => p.text).join('') || ''
+                        ).filter(Boolean).join('\n'),
+                      }),
+                    })
+                    if (res.ok) {
+                      const data = await res.json()
+                      const changes = (data.changes || []).map((c: any) => ({
+                        ...c,
+                        delta: c.newLimit - c.currentLimit,
+                      }))
+                      if (changes.length > 0) {
+                        setBudgetProposal({ targetMonth, changes })
+                      }
+                    }
+                  } catch (e) {
+                    console.error('Failed to fetch budget suggestions:', e)
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#14B8A6]/10 text-[#14B8A6] border border-[#14B8A6]/20 hover:bg-[#14B8A6]/15 transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Suggest Budget
+              </button>
+              <AddCategoryDropdown onCreateCategory={handleCreateCategory} />
+            </div>
           </div>
 
           {/* All Categories Table */}

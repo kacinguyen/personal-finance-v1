@@ -44,7 +44,7 @@ export function IncomeSummaryTab({
   const { ytdIncome, projectedAnnual } = useMemo(() => {
     const currentYear = selectedMonth.getFullYear()
     const ytdPaystubs = paystubs.filter(
-      (p) => new Date(p.pay_date).getFullYear() === currentYear
+      (p) => new Date(p.pay_date + 'T00:00:00').getFullYear() === currentYear
     )
     const ytd = ytdPaystubs.reduce((sum, p) => sum + Number(p.net_pay), 0)
     return {

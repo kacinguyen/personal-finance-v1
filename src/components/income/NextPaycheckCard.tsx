@@ -25,7 +25,7 @@ export function NextPaycheckCard({ paystubs, onUploadClick, loading }: NextPaych
 
     // Sort by pay_date descending
     const sorted = [...paystubs].sort(
-      (a, b) => new Date(b.pay_date).getTime() - new Date(a.pay_date).getTime()
+      (a, b) => new Date(b.pay_date + 'T00:00:00').getTime() - new Date(a.pay_date + 'T00:00:00').getTime()
     )
 
     // Detect pay interval from gaps between consecutive dates
@@ -33,8 +33,8 @@ export function NextPaycheckCard({ paystubs, onUploadClick, loading }: NextPaych
     if (sorted.length >= 2) {
       const gaps: number[] = []
       for (let i = 0; i < sorted.length - 1 && i < 6; i++) {
-        const current = new Date(sorted[i].pay_date).getTime()
-        const next = new Date(sorted[i + 1].pay_date).getTime()
+        const current = new Date(sorted[i].pay_date + 'T00:00:00').getTime()
+        const next = new Date(sorted[i + 1].pay_date + 'T00:00:00').getTime()
         const diffDays = Math.round((current - next) / (1000 * 60 * 60 * 24))
         if (diffDays > 0 && diffDays < 45) {
           gaps.push(diffDays)
@@ -46,7 +46,7 @@ export function NextPaycheckCard({ paystubs, onUploadClick, loading }: NextPaych
     }
 
     // Calculate next pay date from most recent
-    const mostRecent = new Date(sorted[0].pay_date)
+    const mostRecent = new Date(sorted[0].pay_date + 'T00:00:00')
     let next = new Date(mostRecent)
     next.setDate(next.getDate() + payInterval)
 
@@ -87,10 +87,10 @@ export function NextPaycheckCard({ paystubs, onUploadClick, loading }: NextPaych
   const recentUploads = useMemo(() => {
     if (paystubs.length === 0) return []
     const sorted = [...paystubs].sort(
-      (a, b) => new Date(b.pay_date).getTime() - new Date(a.pay_date).getTime()
+      (a, b) => new Date(b.pay_date + 'T00:00:00').getTime() - new Date(a.pay_date + 'T00:00:00').getTime()
     )
     return sorted.slice(0, 4).map(p => ({
-      date: new Date(p.pay_date),
+      date: new Date(p.pay_date + 'T00:00:00'),
       netPay: Number(p.net_pay),
     }))
   }, [paystubs])

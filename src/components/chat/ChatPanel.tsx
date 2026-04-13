@@ -4,20 +4,21 @@ import { X } from 'lucide-react'
 import { useChatContext } from '../../contexts/ChatContext'
 import { ChatMessage } from './ChatMessage'
 import { ChatInput } from './ChatInput'
+import { BudgetRecommendationCard } from './BudgetRecommendationCard'
 
 export function ChatPanel() {
-  const { messages, sendMessage, status, isOpen, closeChat } = useChatContext()
+  const { messages, sendMessage, status, error, isOpen, closeChat, budgetProposal } = useChatContext()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [input, setInput] = useState('')
 
   const isLoading = status === 'streaming' || status === 'submitted'
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages or budget proposal
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages])
+  }, [messages, budgetProposal, isLoading])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -95,6 +96,26 @@ export function ChatPanel() {
                           <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#1F1410]/20" style={{ animationDelay: '150ms' }} />
                           <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#1F1410]/20" style={{ animationDelay: '300ms' }} />
                         </div>
+                      </div>
+                    </div>
+                  )}
+                  {budgetProposal && !isLoading && (
+                    <div className="px-1">
+                      <BudgetRecommendationCard
+                        targetMonth={budgetProposal.targetMonth}
+                        changes={budgetProposal.changes}
+                      />
+                    </div>
+                  )}
+                  {error && !isLoading && (
+                    <div className="flex gap-2.5">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#FF6B6B]/10 text-xs font-medium text-[#FF6B6B]">
+                        !
+                      </div>
+                      <div className="rounded-xl border border-[#FF6B6B]/10 bg-[#FF6B6B]/5 px-3.5 py-2.5">
+                        <p className="text-xs text-[#FF6B6B]">
+                          Something went wrong. Please try again.
+                        </p>
                       </div>
                     </div>
                   )}

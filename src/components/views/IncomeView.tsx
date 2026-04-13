@@ -197,6 +197,36 @@ export function IncomeView({ selectedMonth, onMonthChange }: IncomeViewProps) {
     fetchReimbursementTransactions()
   }, [fetchReimbursementTransactions])
 
+  // Fetch all salary transactions for the year (for the chart, when paystubs are missing)
+  const [yearSalaryTransactions, setYearSalaryTransactions] = useState<Transaction[]>([])
+
+  const fetchYearSalaryTransactions = useCallback(async () => {
+    if (!salaryCategoryId) {
+      setYearSalaryTransactions([])
+      return
+    }
+    const chartYear = selectedMonth.getFullYear()
+    const startDate = `${chartYear - 1}-01-01`
+    const endDate = `${chartYear}-12-31`
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('category_id', salaryCategoryId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching year salary transactions:', error)
+    } else if (data) {
+      setYearSalaryTransactions(data as Transaction[])
+    }
+  }, [salaryCategoryId, selectedMonth])
+
+  useEffect(() => {
+    fetchYearSalaryTransactions()
+  }, [fetchYearSalaryTransactions])
+
   // Split income transactions into salary vs other
   const { salaryTransactions, salaryTransactionIncome, otherIncome } = useMemo(() => {
     const salary: Transaction[] = []
@@ -241,7 +271,7 @@ export function IncomeView({ selectedMonth, onMonthChange }: IncomeViewProps) {
   // Calculate income from paystubs for selected month
   const selectedMonthPaystubs = useMemo(() => {
     return paystubs.filter((p) => {
-      const payDate = new Date(p.pay_date)
+      const payDate = new Date(p.pay_date + 'T00:00:00')
       return payDate.getMonth() === selectedMonth.getMonth() && payDate.getFullYear() === selectedMonth.getFullYear()
     })
   }, [paystubs, selectedMonth])
@@ -250,7 +280,7 @@ export function IncomeView({ selectedMonth, onMonthChange }: IncomeViewProps) {
   const paysByMonth = useMemo(() => {
     const grouped: Record<string, { total: number; paystubs: PaystubRecord[] }> = {}
     paystubs.forEach((p) => {
-      const payDate = new Date(p.pay_date)
+      const payDate = new Date(p.pay_date + 'T00:00:00')
       const monthKey = `${payDate.getFullYear()}-${payDate.getMonth()}`
       if (!grouped[monthKey]) {
         grouped[monthKey] = { total: 0, paystubs: [] }
@@ -347,7 +377,7 @@ export function IncomeView({ selectedMonth, onMonthChange }: IncomeViewProps) {
   // YTD contribution totals (from all paystubs)
   const ytdContributions = useMemo(() => {
     const currentYear = selectedMonth.getFullYear()
-    const ytdPaystubs = paystubs.filter(p => new Date(p.pay_date).getFullYear() === currentYear)
+    const ytdPaystubs = paystubs.filter(p => new Date(p.pay_date + 'T00:00:00').getFullYear() === currentYear)
 
     const totals = {
       traditional_401k: 0,
@@ -427,7 +457,7 @@ export function IncomeView({ selectedMonth, onMonthChange }: IncomeViewProps) {
         </motion.div>
 
         {/* Yearly Income Chart — Full Width */}
-        <YearlyIncomeChart paystubs={paystubs} selectedMonth={selectedMonth} reimbursementTransactions={reimbursementTransactions} />
+        <YearlyIncomeChart paystubs={paystubs} selectedMonth={selectedMonth} reimbursementTransactions={reimbursementTransactions} salaryTransactions={yearSalaryTransactions} />
 
         {/* Two Column Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

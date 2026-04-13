@@ -111,7 +111,7 @@ export function IncomeTypesTab({
   // Salary from paystubs
   const { monthlyGross, monthlyNet, monthlyBonus, ytdGross, ytdNet, ytdBonus } = useMemo(() => {
     const currentYear = selectedMonth.getFullYear()
-    const ytdPaystubs = paystubs.filter(p => new Date(p.pay_date).getFullYear() === currentYear)
+    const ytdPaystubs = paystubs.filter(p => new Date(p.pay_date + 'T00:00:00').getFullYear() === currentYear)
 
     return {
       monthlyGross: displayPaystubs.reduce((s, p) => s + (Number(p.gross_pay) || 0), 0),
