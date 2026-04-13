@@ -21,7 +21,7 @@ export function BudgetRecommendationCard({ targetMonth, changes }: Props) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set(changes.map(c => c.budgetId)))
   const [applying, setApplying] = useState(false)
   const [applied, setApplied] = useState(false)
-  const { notifyBudgetChange, setBudgetProposal } = useChatContext()
+  const { notifyBudgetChange } = useChatContext()
 
   const toggle = (budgetId: string) => {
     if (applied) return
