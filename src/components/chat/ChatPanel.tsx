@@ -82,10 +82,20 @@ export function ChatPanel() {
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
-                  {messages.map((message) => (
-                    <ChatMessage key={message.id} message={message} />
-                  ))}
-                  {isLoading && (
+                  {messages.map((message, index) => {
+                    const isLastAssistant =
+                      message.role === 'assistant' &&
+                      index === messages.length - 1 &&
+                      isLoading
+                    return (
+                      <ChatMessage
+                        key={message.id}
+                        message={message}
+                        isStreaming={isLastAssistant}
+                      />
+                    )
+                  })}
+                  {status === 'submitted' && messages[messages.length - 1]?.role === 'user' && (
                     <div className="flex gap-2.5">
                       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#14B8A6]/10 text-xs font-medium text-[#14B8A6]">
                         P
