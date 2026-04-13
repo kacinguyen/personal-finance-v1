@@ -1,8 +1,9 @@
 import type { UIMessage } from 'ai'
-import { BudgetRecommendationCard } from './BudgetRecommendationCard'
+import { StreamOfThought } from './StreamOfThought'
 
 interface ChatMessageProps {
   message: UIMessage
+  isStreaming?: boolean
 }
 
 function getTextContent(message: UIMessage): string {
@@ -12,16 +13,27 @@ function getTextContent(message: UIMessage): string {
     .join('')
 }
 
-function getBudgetProposal(message: UIMessage): { targetMonth: string; changes: any[] } | null {
+// In AI SDK v6, tool parts use type 'dynamic-tool' (or 'tool-${name}' for typed tools).
+// Properties like toolName, state, output are directly on the part object.
+function isToolPart(part: any): boolean {
+  return part.type === 'dynamic-tool' || (typeof part.type === 'string' && part.type.startsWith('tool-'))
+}
+
+function getToolName(part: any): string {
+  return part.toolName ?? part.type?.replace(/^tool-/, '') ?? ''
+}
+
+function getToolInvocations(message: UIMessage) {
+  const invocations: Array<{ toolName: string; state: string }> = []
   for (const part of message.parts) {
-    if (part.type === 'tool-invocation') {
-      const inv = (part as any).toolInvocation
-      if (inv?.toolName === 'propose_budget_changes' && inv?.state === 'result' && inv?.result?.changes) {
-        return { targetMonth: inv.result.targetMonth, changes: inv.result.changes }
-      }
+    if (!isToolPart(part)) continue
+    const p = part as any
+    const toolName = getToolName(p)
+    if (toolName) {
+      invocations.push({ toolName, state: p.state ?? 'input-available' })
     }
   }
-  return null
+  return invocations
 }
 
 function isTableSeparator(line: string): boolean {
@@ -169,12 +181,12 @@ function renderInline(text: string): (string | JSX.Element)[] {
   return parts.length > 0 ? parts : [text]
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) {
   const isUser = message.role === 'user'
   const text = getTextContent(message)
-  const budgetProposal = !isUser ? getBudgetProposal(message) : null
+  const toolInvocations = !isUser ? getToolInvocations(message) : []
 
-  if (!text && !budgetProposal) return null
+  if (!text && toolInvocations.length === 0) return null
 
   return (
     <div className={`flex gap-2.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -194,17 +206,15 @@ export function ChatMessage({ message }: ChatMessageProps) {
           text
         ) : (
           <>
+            {toolInvocations.length > 0 && (
+              <StreamOfThought
+                toolInvocations={toolInvocations}
+                isStreaming={isStreaming}
+              />
+            )}
             {text && (
               <div className="rounded-xl px-3.5 py-2.5 border border-[#1F1410]/5 bg-white">
                 {formatContent(text)}
-              </div>
-            )}
-            {budgetProposal && (
-              <div className="mt-2">
-                <BudgetRecommendationCard
-                  targetMonth={budgetProposal.targetMonth}
-                  changes={budgetProposal.changes}
-                />
               </div>
             )}
           </>
